@@ -1,13 +1,11 @@
-"""Sphinx configuration file for an LSST stack package.
+"""Documenteer configuration file for an LSST stack package.
 
-This configuration only affects single-package Sphinx documentation builds.
+This configuration only affects single-package documentation builds.
 """
-
-from documenteer.sphinxconfig.stackconf import build_package_configs
-import lsst.example.pythononly
+from documenteer.conf.pipelinespkg import *  # noqa: F403
 
 
-_g = globals()
-_g.update(build_package_configs(
-    project_name='example_pythononly',
-    version=lsst.example.pythononly.version.__version__))
+project = "meas_extensions_multiprofit"
+html_theme_options["logotext"] = project  # noqa: F405
+html_title = project
+html_short_title = project
