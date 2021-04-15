@@ -1,6 +1,6 @@
-########################################
-example_pythononly documentation preview
-########################################
+#################################################
+meas_extensions_multiprofit documentation preview
+#################################################
 
 .. This page is for local development only. It isn't published to pipelines.lsst.io.
 
@@ -9,4 +9,4 @@ example_pythononly documentation preview
 .. toctree::
    :maxdepth: 1
 
-   lsst.example.pythononly/index
+   lsst.meas.extensions.multiprofit/index
