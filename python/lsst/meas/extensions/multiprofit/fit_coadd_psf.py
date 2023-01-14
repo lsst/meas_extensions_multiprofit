@@ -20,7 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from dataclasses import dataclass
+from pydantic.dataclasses import dataclass
 
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 import lsst.pex.config as pexConfig
@@ -29,29 +29,27 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
 import lsst.utils.timer as utilsTimer
 
-from multiprofit.fit_psf import CatalogExposureABC, CatalogPsfFitter, CatalogPsfFitterConfig
+from multiprofit.fit_psf import CatalogExposurePsfABC, CatalogPsfFitter, CatalogPsfFitterConfig
 
 
-@dataclass(frozen=True)
-class CatalogExposure(fitCP.CatalogExposure, CatalogExposureABC):
-    def get_catalog(self):
-        return self.catalog
-
-    def get_psf_image(self, source):
-        bbox = source.getFootprint().getBBox()
-        center = bbox.getCenter()
-        return self.exposure.getPsf().computeKernelImage(center).array
+@dataclass(frozen=True, kw_only=True, config=fitCP.CatalogExposureConfig)
+class CatalogExposure(fitCP.CatalogExposurePsf, CatalogExposurePsfABC):
+    """A CatalogExposure for PSF fitting."""
 
 
 class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
-    """Configuration for the MultiProFit profile fitter."""
+    """Configuration for the MultiProFit Gaussian mixture PSF fitter."""
     fit_linear = pexConfig.Field[bool](default=True, doc="Fit linear parameters to initialize")
     prefix_column = pexConfig.Field[str](default="mpf_psf_", doc="Column name prefix")
     sigmas = pexConfig.ListField[float](default=[1.5, 3], doc="Number of Gaussian components in PSF")
 
+    def setDefaults(self):
+        super().setDefaults()
+        self.flag_errors = {"no_inputs_flag": "InvalidParameterError"}
+
 
 class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
-    """Run MultiProFit on Exposure/SourceCatalog pairs in multiple bands.
+    """Fit a Gaussian mixture PSF model at cataloged locations.
 
     This task uses MultiProFit to fit a PSF model to the coadd PSF,
     evaluated at the centroid of each source in the corresponding
@@ -64,6 +62,13 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
     ConfigClass = MultiProFitPsfConfig
     _DefaultName = "multiProFitPsf"
 
+    def __init__(self, **kwargs):
+        errors_expected = {} if 'errors_expected' not in kwargs else kwargs.pop('errors_expected')
+        if InvalidParameterError not in errors_expected:
+            # Cannot compute CoaddPsf at point (x, y)
+            errors_expected[InvalidParameterError] = "no_inputs_flag"
+        CatalogPsfFitter.__init__(self, errors_expected=errors_expected)
+        fitCP.CoaddPsfFitSubTask.__init__(self, **kwargs)
 
     @utilsTimer.timeMethod
     def run(
@@ -89,6 +94,3 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
         """
         catalog = self.fit(catexp=catexp, config=self.config, **kwargs)
         return pipeBase.Struct(output=astropy_to_arrow(catalog))
-
-    def __init__(self, **kwargs):
-        super().__init__(errors_expected={"no_inputs_flag": InvalidParameterError}, **kwargs)

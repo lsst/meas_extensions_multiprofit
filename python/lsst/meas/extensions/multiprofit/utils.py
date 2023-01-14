@@ -20,7 +20,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections import defaultdict
+import numpy as np
+
+import lsst.afw.detection as afwDetect
 import lsst.afw.image as afwImage
+import lsst.geom as geom
 
 
 def defaultdictNested():
@@ -35,20 +39,55 @@ def defaultdictNested():
 
 
 # TODO: Allow addition to existing image
-def get_spanned_image(footprint, bbox=None):
-    spans = footprint.getSpans()
+def get_spanned_image(
+    exposure: afwImage.Exposure,
+    footprint: afwDetect.Footprint = None,
+    bbox: geom.Box2I = None,
+    spans: np.ndarray = None,
+    get_sig_inv: bool = False,
+):
+    """Get an image masked by its spanset.
+
+    Parameters
+    ----------
+    exposure : `lsst.afw.image.Exposure`
+        An exposure to extract arrays from.
+    footprint : `lsst.afw.detection`
+        The footprint to get spans/bboxes from. Not needed if both of
+        `bbox` and `spans` are provided.
+    bbox : `lsst.geom.Box2I`
+        The bounding box to subset the exposure with.
+        Defaults to the footprint's bbox.
+    spans : `np.ndarray`
+        A spanset array (inverse mask/selection).
+        Defaults to the footprint's spans.
+    get_sig_inv : bool
+        Whether to get the inverse variance and return its square root.
+
+    Returns
+    -------
+    image : `np.ndarray`
+        The image array, with masked pixels set to zero.
+    bbox : `lsst.geom.Box2I`
+        The bounding box used to subset the exposure.
+    sig_inv : `np.ndarray`
+        The inverse sigma array, with masked pixels set to zero.
+        Set to None if `get_sig_inv` is False.
+    """
     bbox_is_none = bbox is None
     if bbox_is_none:
         bbox = footprint.getBBox()
     if not (bbox.getHeight() > 0 and bbox.getWidth() > 0):
         return None, bbox
-    bbox_fp = bbox if bbox_is_none else footprint.getBBox()
-    img = afwImage.Image(bbox_fp, dtype='D')
-    spans.setImage(img, 1)
-    img.array[img.array == 1] = footprint.getImageArray()
-    if not bbox_is_none:
-        img = img.subset(bbox)
-    return img.array, bbox
+    if spans is None:
+        spans = footprint.getSpans().asArray()
+    sig_inv = None
+    img = afwImage.Image(bbox, dtype='D')
+    img.array[spans] = exposure.image.subset(bbox).array[spans]
+    if get_sig_inv:
+        sig_inv = afwImage.Image(bbox, dtype='D').array
+        sig_inv[spans] = 1/np.sqrt(exposure.variance.subset(bbox).array[spans])
+    return img.array, bbox, sig_inv
 
 
 def join_and_filter(separator, items, exclusion=None):
