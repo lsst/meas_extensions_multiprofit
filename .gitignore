@@ -3,10 +3,21 @@
 *.so
 *.os
 *.pyc
+
+# IDE folders and files
+.idea/
+.theia/
+.vscode/
+
+# pytest and related
 pytest_session.txt
 .cache
+.hypothesis
 .pytest_cache
 .coverage
+tests/.tests
+tests/.cache
+
 /*.fits
 *_wrap.cc
 *Lib.py
@@ -18,8 +29,6 @@ doc/html
 doc/doxygen.conf
 doc/xml
 python/lsst/meas/extensions/multiprofit/version.py
-tests/.tests
-tests/.cache
 ups/*.cfgc
 _build.*
 bin
