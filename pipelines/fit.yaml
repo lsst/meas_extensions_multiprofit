@@ -1,0 +1,45 @@
+description: |
+  Fit gaussian mix single-band coadd PSF with MultiProFit
+tasks:
+  fit_psf_multiprofit:
+    class: lsst.pipe.tasks.fit_coadd_psf.CoaddPsfFitTask
+    config:
+      python: |
+        from lsst.meas.extensions.multiprofit.fit_coadd_psf import MultiProFitPsfTask
+        config.fit_coadd_psf.retarget(MultiProFitPsfTask)
+  fit_src_psexp_multiprofit:
+    class: lsst.pipe.tasks.fit_coadd_multiband.CoaddMultibandFitTask
+    config:
+      connections.cat_output: deepCoadd_r_psexp_multiprofit
+      python: |
+        from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
+        from multiprofit.fit_source import SersicConfig, SersicIndexConfig
+        config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        config.fit_coadd_multiband.n_pointsources = 1
+        config.fit_coadd_multiband.sersics = {
+          "exp": SersicConfig(sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0))
+        }
+  fit_src_exp_multiprofit:
+    class: lsst.pipe.tasks.fit_coadd_multiband.CoaddMultibandFitTask
+    config:
+      connections.cat_output: deepCoadd_r_exp_multiprofit
+      python: |
+        from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
+        from multiprofit.fit_source import SersicConfig, SersicIndexConfig
+        config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        config.fit_coadd_multiband.sersics = {
+          "exp": SersicConfig(sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0))
+        }
+  fit_src_exp_fixcen_multiprofit:
+    class: lsst.pipe.tasks.fit_coadd_multiband.CoaddMultibandFitTask
+    config:
+      connections.cat_output: deepCoadd_r_exp_fixcen_multiprofit
+      python: |
+        from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
+        from multiprofit.fit_source import SersicConfig, SersicIndexConfig
+        config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        config.fit_coadd_multiband.fit_cenx = False
+        config.fit_coadd_multiband.fit_ceny = False
+        config.fit_coadd_multiband.sersics = {
+          "exp": SersicConfig(sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0))
+        }
