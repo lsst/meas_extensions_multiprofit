@@ -35,8 +35,14 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_multiband as fitMB
 import lsst.utils.timer as utilsTimer
 
+from multiprofit.config import set_config_from_dict
 from multiprofit.fit_psf import CatalogPsfFitterConfig
-from multiprofit.fit_source import CatalogExposureSourcesABC, CatalogSourceFitter, CatalogSourceFitterConfig
+from multiprofit.fit_source import (
+    CatalogExposureSourcesABC, CatalogSourceFitterABC, CatalogSourceFitterConfig,
+)
+from multiprofit.utils import get_params_uniq
+
+from typing import Type
 
 from .utils import get_spanned_image
 
@@ -86,8 +92,9 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         #  fitMB.CatalogExposureInputs, self).__thisclass__.__post_init__(self)
         # ... but pydantic dataclasses do not seem to, and also don't pass self
         super().__post_init__()
-        object.__setattr__(self, 'config_fit_psf',
-                           CatalogPsfFitterConfig(**self.table_psf_fits.meta['config']))
+        config = CatalogPsfFitterConfig()
+        set_config_from_dict(config, self.table_psf_fits.meta['config'])
+        object.__setattr__(self, 'config_fit_psf', config)
 
 
 class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFitSubConfig):
@@ -109,7 +116,7 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         self.flag_errors = {"not_primary_flag": "NotPrimaryError"}
 
 
-class MultiProFitSourceTask(CatalogSourceFitter, fitMB.CoaddMultibandFitSubTask):
+class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTask):
     """Run MultiProFit on Exposure/SourceCatalog pairs in multiple bands.
 
     This task uses MultiProFit to fit a single model to all sources in a coadd,
@@ -128,14 +135,14 @@ class MultiProFitSourceTask(CatalogSourceFitter, fitMB.CoaddMultibandFitSubTask)
         errors_expected = {} if 'errors_expected' not in kwargs else kwargs.pop('errors_expected')
         if NotPrimaryError not in errors_expected:
             errors_expected[NotPrimaryError] = 'not_primary_flag'
-        CatalogSourceFitter.__init__(self, errors_expected=errors_expected)
+        CatalogSourceFitterABC.__init__(self, errors_expected=errors_expected)
         fitMB.CoaddMultibandFitSubTask.__init__(self, **kwargs)
 
     @staticmethod
     def _init_component(
-        component: g2f.Component, flux: float | None = None,
-        size_x: float | None = None, size_y: float | None = None,
-        rho: float | None = None, cenx: float | None = None, ceny: float | None = None,
+        component: g2f.Component,
+        values_init: dict[Type[g2f.ParameterD], float] = None,
+        limits_init: dict[Type[g2f.ParameterD], g2f.LimitsD] = None,
     ):
         """Initialize component parameter values.
 
@@ -143,42 +150,28 @@ class MultiProFitSourceTask(CatalogSourceFitter, fitMB.CoaddMultibandFitSubTask)
         ----------
         component : `gauss2d.fit.Component`
             The component to initialize.
-        flux : float
-            The flux (integral) value, if any.
-        size_x : float
-            The x-axis size value, if any.
-        size_y : float
-            The y-axis size value, if any.
-        rho : float
-            The rho (correlation coefficient) value, if any.
-        cenx : float
-            The x centroid value, if any.
-        ceny : float
-            The y centroid value, if any.
+        values_init
+            Initial values to set per parameter type.
         """
-        has_flux = flux is not None
-        has_cenx = cenx is not None
-        has_ceny = ceny is not None
-        for parameter in component.parameters():
-            if has_flux and isinstance(parameter, g2f.IntegralParameterD):
-                parameter.value = flux
-            elif size_x is not None and isinstance(parameter, g2f.SizeXParameterD):
-                parameter.value = size_x
-            elif size_y is not None and isinstance(parameter, g2f.SizeYParameterD):
-                parameter.value = size_y
-            elif rho is not None and isinstance(parameter, g2f.RhoParameterD):
-                parameter.value = rho
-            elif has_cenx and isinstance(parameter, g2f.CentroidXParameterD):
-                parameter.value = cenx
-            elif has_ceny and isinstance(parameter, g2f.CentroidYParameterD):
-                parameter.value = ceny
+        params_free = get_params_uniq(component)
+        for param in params_free:
+            type_param = type(param)
+            if (value := values_init.get(type_param)) is not None:
+                if param.limits.check(value):
+                    param.value = value
+            if (limits := limits_init.get(type_param)) is not None:
+                value = value if value is not None else param.value
+                if not limits.check(value):
+                    param.value = (limits.max + limits.min)/2.
+                param.limits = limits
 
     def initialize_model(self, model: g2f.Model, source: g2f.Source,
                          limits_x: g2f.LimitsD, limits_y: g2f.LimitsD):
         comps = model.sources[0].components
         sig_x = math.sqrt(source['base_SdssShape_xx'])
         sig_y = math.sqrt(source['base_SdssShape_yy'])
-        rho = np.clip(source['base_SdssShape_xy']/(sig_x*sig_y), -0.5, 0.5)
+        # There is a sign convention difference
+        rho = np.clip(-source['base_SdssShape_xy']/(sig_x*sig_y), -0.5, 0.5)
         if not np.isfinite(rho):
             sig_x, sig_y, rho = 0.5, 0.5, 0
         if not source['base_SdssShape_flag']:
@@ -192,8 +185,10 @@ class MultiProFitSourceTask(CatalogSourceFitter, fitMB.CoaddMultibandFitSubTask)
         n_psfs = self.config.n_pointsources
         n_extended = len(self.config.sersics)
         observation = model.data[0]
-        limits_x.max = float(observation.image.n_cols)
-        limits_y.max = float(observation.image.n_rows)
+        x_max = float(observation.image.n_cols)
+        y_max = float(observation.image.n_rows)
+        limits_x.max = x_max
+        limits_y.max = y_max
         try:
             cenx_img, ceny_img = self.catexps[0].exposure.wcs.skyToPixel(
                 geom.SpherePoint(source['coord_ra'], source['coord_dec'])
@@ -208,10 +203,34 @@ class MultiProFitSourceTask(CatalogSourceFitter, fitMB.CoaddMultibandFitSubTask)
             cenx = observation.image.n_cols/2.
             ceny = observation.image.n_rows/2.
         flux = flux/(n_psfs + n_extended)
+        values_init = {
+            g2f.IntegralParameterD: flux,
+            g2f.CentroidXParameterD: cenx,
+            g2f.CentroidYParameterD: ceny,
+            g2f.ReffXParameterD: sig_x,
+            g2f.ReffYParameterD: sig_y,
+            g2f.RhoParameterD: -rho,
+        }
+        size_major = g2.EllipseMajor(g2.Ellipse(sigma_x=sig_x, sigma_y=sig_y, rho=rho)).r_major
+        # An R_eff larger than the box size is problematic
+        # Also should stop unreasonable size proposals; log10 transform isn't enough
+        # TODO: Try logit for r_eff?
+        limits_init = {
+            g2f.IntegralParameterD: g2f.LimitsD(1e-6, 1e10),
+            g2f.ReffXParameterD: g2f.LimitsD(1e-5, x_max),
+            g2f.ReffYParameterD: g2f.LimitsD(1e-5, y_max),
+        }
+
         for comp in comps[:n_psfs]:
-            self._init_component(comp, cenx=cenx, ceny=ceny, flux=flux)
+            self._init_component(comp, values_init=values_init, limits_init=limits_init)
         for comp in comps[n_psfs:]:
-            self._init_component(comp, cenx=cenx, ceny=ceny, flux=flux, size_x=sig_x, size_y=sig_y, rho=rho)
+            self._init_component(comp, values_init=values_init, limits_init=limits_init)
+        for prior in model.priors:
+            if isinstance(prior, g2f.GaussianPrior):
+                # TODO: Add centroid prior
+                pass
+            elif isinstance(prior, g2f.ShapePrior):
+                prior.prior_size.mean_parameter.value = size_major
 
     @utilsTimer.timeMethod
     def run(

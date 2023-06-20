@@ -26,7 +26,7 @@ import lsst.meas.extensions.multiprofit.fit_coadd_multiband as fitCMB
 import lsst.meas.extensions.multiprofit.fit_coadd_psf as fitCP
 
 import gauss2d.fit as g2f
-from multiprofit.fit_source import SersicConfig
+from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
 import numpy as np
 import os
 import pytest
@@ -76,10 +76,12 @@ def psf_fit_results(catalog, exposure, psf_fit_config):
 
 @pytest.fixture(scope='module')
 def source_fit_config():
-    return fitCMB.MultiProFitSourceConfig(
+    config = fitCMB.MultiProFitSourceConfig(
         n_pointsources=1,
-        sersics={'gauss': SersicConfig()},
+        sersics={'gauss': SersicConfig(sersicindex=SersicIndexConfig(fixed=True, value_initial=0.5))},
     )
+    config.validate()
+    return config
 
 
 @pytest.fixture(scope='module')
