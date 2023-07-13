@@ -19,7 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
 from pydantic.dataclasses import dataclass
 
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
@@ -41,7 +40,6 @@ class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
     """Configuration for the MultiProFit Gaussian mixture PSF fitter."""
     fit_linear = pexConfig.Field[bool](default=True, doc="Fit linear parameters to initialize")
     prefix_column = pexConfig.Field[str](default="mpf_psf_", doc="Column name prefix")
-    sigmas = pexConfig.ListField[float](default=[1.5, 3], doc="Number of Gaussian components in PSF")
 
     def setDefaults(self):
         super().setDefaults()

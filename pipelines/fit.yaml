@@ -10,36 +10,69 @@ tasks:
   fit_src_psexp_multiprofit:
     class: lsst.pipe.tasks.fit_coadd_multiband.CoaddMultibandFitTask
     config:
-      connections.cat_output: deepCoadd_r_psexp_multiprofit
+      connections.cat_output: deepCoadd_psexp_multiprofit
       python: |
         from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
-        from multiprofit.fit_source import SersicConfig, SersicIndexConfig
+        from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
         config.fit_coadd_multiband.n_pointsources = 1
         config.fit_coadd_multiband.sersics = {
-          "exp": SersicConfig(sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0))
+          "exp": SersicConfig(
+            sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0),
+            prior_axrat_stddev=0.2,
+            prior_size_stddev=0.3,
+          )
         }
   fit_src_exp_multiprofit:
     class: lsst.pipe.tasks.fit_coadd_multiband.CoaddMultibandFitTask
     config:
-      connections.cat_output: deepCoadd_r_exp_multiprofit
+      connections.cat_output: deepCoadd_exp_multiprofit
       python: |
         from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
-        from multiprofit.fit_source import SersicConfig, SersicIndexConfig
+        from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
         config.fit_coadd_multiband.sersics = {
-          "exp": SersicConfig(sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0))
+          "exp": SersicConfig(
+            sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0),
+            prior_axrat_stddev=0.2,
+            prior_size_stddev=0.3,
+          )
         }
-  fit_src_exp_fixcen_multiprofit:
+  fit_src_exp_fixedcen_multiprofit:
     class: lsst.pipe.tasks.fit_coadd_multiband.CoaddMultibandFitTask
     config:
-      connections.cat_output: deepCoadd_r_exp_fixcen_multiprofit
+      connections.cat_output: deepCoadd_exp_fixedcen_multiprofit
       python: |
         from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
-        from multiprofit.fit_source import SersicConfig, SersicIndexConfig
+        from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
         config.fit_coadd_multiband.fit_cenx = False
         config.fit_coadd_multiband.fit_ceny = False
         config.fit_coadd_multiband.sersics = {
-          "exp": SersicConfig(sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0))
+          "exp": SersicConfig(
+            sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0),
+            prior_axrat_stddev=0.2,
+            prior_size_stddev=0.3,
+          )
+        }
+  fit_src_psexpdev_multiprofit:
+    class: lsst.pipe.tasks.fit_coadd_multiband.CoaddMultibandFitTask
+    config:
+      connections.cat_output: deepCoadd_psexpdev_multiprofit
+      python: |
+        from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
+        from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
+        config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        config.fit_coadd_multiband.n_pointsources = 1
+        config.fit_coadd_multiband.sersics = {
+          "exp": SersicConfig(
+            sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0),
+            prior_axrat_stddev=0.2,
+            prior_size_stddev=0.3,
+          ),
+          "dev": SersicConfig(
+            sersicindex=SersicIndexConfig(fixed=True, value_initial=4.0),
+            prior_axrat_stddev=0.2,
+            prior_size_stddev=0.3,
+          )
         }
