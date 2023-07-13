@@ -38,10 +38,10 @@ tasks:
             prior_size_stddev=0.3,
           )
         }
-  fit_src_exp_fixcen_multiprofit:
+  fit_src_exp_fixedcen_multiprofit:
     class: lsst.pipe.tasks.fit_coadd_multiband.CoaddMultibandFitTask
     config:
-      connections.cat_output: deepCoadd_exp_fixcen_multiprofit
+      connections.cat_output: deepCoadd_exp_fixedcen_multiprofit
       python: |
         from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
         from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
