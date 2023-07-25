@@ -23,7 +23,7 @@ import math
 import numpy as np
 import pydantic
 from pydantic.dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 
 import gauss2d as g2
 import gauss2d.fit as g2f
@@ -165,7 +165,27 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
                     param.value = (limits.max + limits.min)/2.
                 param.limits = limits
 
-    def initialize_model(self, model: g2f.Model, source: g2f.Source,
+    def get_model_cens(self, source: Mapping[str, Any]):
+        cenx_img, ceny_img = self.catexps[0].exposure.wcs.skyToPixel(
+            geom.SpherePoint(source['coord_ra'], source['coord_dec'])
+        )
+        bbox = source.getFootprint().getBBox()
+        begin_x, begin_y = bbox.beginX, bbox.beginY
+        # multiprofit bottom left corner coords are 0, 0, not -0.5, -0.5
+        cen_x = cenx_img - begin_x + 0.5
+        cen_y = ceny_img - begin_y + 0.5
+        return cen_x, cen_y
+
+    def get_model_radec(self, source: Mapping[str, Any], cen_x: float, cen_y: float):
+        bbox = source.getFootprint().getBBox()
+        begin_x, begin_y = bbox.beginX, bbox.beginY
+        # multiprofit bottom left corner coords are 0, 0, not -0.5, -0.5
+        cen_x_img = cen_x + begin_x - 0.5
+        cen_y_img = cen_y + begin_y - 0.5
+        ra, dec = self.catexps[0].exposure.wcs.pixelToSky(cen_x_img, cen_y_img)
+        return ra.asDegrees(), dec.asDegrees()
+
+    def initialize_model(self, model: g2f.Model, source: Mapping[str, Any],
                          limits_x: g2f.LimitsD, limits_y: g2f.LimitsD):
         comps = model.sources[0].components
         sig_x = math.sqrt(source['base_SdssShape_xx'])
