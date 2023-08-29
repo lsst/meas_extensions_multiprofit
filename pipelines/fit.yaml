@@ -62,8 +62,8 @@ tasks:
         from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
         from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
-        config.fit_coadd_multiband.fit_cenx = False
-        config.fit_coadd_multiband.fit_ceny = False
+        config.fit_coadd_multiband.fit_cen_x = False
+        config.fit_coadd_multiband.fit_cen_y = False
         config.fit_coadd_multiband.sersics = {
           "exp": SersicConfig(
             sersicindex=SersicIndexConfig(fixed=True, value_initial=1.0),
