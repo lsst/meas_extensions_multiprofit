@@ -1,0 +1,70 @@
+description: |
+  Matched difference (multiprofit vs reference) plots/metrics
+parameters:
+  label_model: "MPF PS+Gauss"
+  name_model: "psgauss"
+  bands: ["g", "r", "i"]
+  mag_x_min: 17
+  mag_x_max: 29
+  mag_diff_min: -1000
+  mag_diff_max: 1000
+  mag_chi_min: -5
+  mag_chi_max: 5
+  pos_diff_min: -100
+  pos_diff_max: 100
+  pos_chi_min: -5
+  pos_chi_max: 5
+tasks:
+  diff_matched_analysis:
+    class: lsst.analysis.tools.tasks.DiffMatchedAnalysisTask
+    config:
+      bands: parameters.bands
+      connections.data: matched_truth_summary_objectTable_tract_multiprofit
+      connections.outputName: diff_matched_truth_summary_objectTable_tract_multiprofit
+
+      atools.matchedRefMagDiff: MatchedRefCoaddDiffMagTool
+      atools.matchedRefMagDiff.fluxes_default.cmodel_err: model_err
+      atools.matchedRefMagDiff.produce.xLims: lims_mag_x
+      atools.matchedRefMagDiff.produce.yLims: lims_mag_diff
+
+      atools.matchedRefMagChi: MatchedRefCoaddDiffMagTool
+      atools.matchedRefMagChi.fluxes_default.cmodel_err: model_err
+      atools.matchedRefMagChi.produce.xLims: lims_mag_x
+      atools.matchedRefMagChi.produce.yLims: lims_mag_chi
+      atools.matchedRefMagChi.compute_chi: true
+
+      atools.matchedRefPositionRaDiff: MatchedRefCoaddDiffPositionTool
+      atools.matchedRefPositionRaDiff.fluxes_default.cmodel_err: model_err
+      atools.matchedRefPositionRaDiff.coord_label: R.A.
+      atools.matchedRefPositionRaDiff.coord_meas: mpf_psexpdev_cen_ra
+      atools.matchedRefPositionRaDiff.coord_ref: refcat_ra
+      atools.matchedRefPositionRaDiff.scale_factor: 3600000
+      atools.matchedRefPositionRaDiff.produce.plot.xLims: lims_mag_x
+      atools.matchedRefPositionRaDiff.produce.plot.yLims: lims_pos_diff
+
+      atools.matchedRefPositionDecDiff: MatchedRefCoaddDiffPositionTool
+      atools.matchedRefPositionDecDiff.fluxes_default.cmodel_err: model_err
+      atools.matchedRefPositionDecDiff.coord_label: Dec.
+      atools.matchedRefPositionDecDiff.coord_meas: mpf_psexpdev_cen_dec
+      atools.matchedRefPositionDecDiff.coord_ref: refcat_dec
+      atools.matchedRefPositionDecDiff.scale_factor: 3600000
+      atools.matchedRefPositionDecDiff.produce.plot.xLims: lims_mag_x
+      atools.matchedRefPositionDecDiff.produce.plot.yLims: lims_pos_diff
+
+      python: |
+        from lsst.analysis.tools.atools.diffMatched import (
+          MatchedRefCoaddDiffMagTool,
+          MatchedRefCoaddDiffPositionTool,
+        )
+        from lsst.analysis.tools.atools.genericBuild import FluxConfig
+        model_err = FluxConfig(
+          band_format = "{key}",
+          name_flux = parameters.label_model,
+          key_flux = f"mpf_{parameters.name_model}_{{band}}_flux",
+          key_flux_error = "{key_flux}_err"
+        )
+        lims_mag_x = (parameters.mag_x_min, parameters.mag_x_max)
+        lims_mag_chi = (parameters.mag_chi_min, parameters.mag_chi_max)
+        lims_mag_diff = (parameters.mag_diff_min, parameters.mag_diff_max)
+        lims_pos_chi = (parameters.pos_chi_min, parameters.pos_chi_max)
+        lims_pos_diff = (parameters.pos_diff_min, parameters.pos_diff_max)

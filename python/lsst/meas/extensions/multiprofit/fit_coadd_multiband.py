@@ -23,7 +23,7 @@ import math
 import numpy as np
 import pydantic
 from pydantic.dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 
 import gauss2d as g2
 import gauss2d.fit as g2f
@@ -153,8 +153,10 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         values_init
             Initial values to set per parameter type.
         """
-        params_free = get_params_uniq(component)
-        for param in params_free:
+        # These aren't necessarily all free - should set cen_x, y
+        # even if they're fixed, for example
+        params_init = get_params_uniq(component)
+        for param in params_init:
             type_param = type(param)
             if (value := values_init.get(type_param)) is not None:
                 if param.limits.check(value):
@@ -165,7 +167,27 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
                     param.value = (limits.max + limits.min)/2.
                 param.limits = limits
 
-    def initialize_model(self, model: g2f.Model, source: g2f.Source,
+    def get_model_cens(self, source: Mapping[str, Any]):
+        cenx_img, ceny_img = self.catexps[0].exposure.wcs.skyToPixel(
+            geom.SpherePoint(source['coord_ra'], source['coord_dec'])
+        )
+        bbox = source.getFootprint().getBBox()
+        begin_x, begin_y = bbox.beginX, bbox.beginY
+        # multiprofit bottom left corner coords are 0, 0, not -0.5, -0.5
+        cen_x = cenx_img - begin_x + 0.5
+        cen_y = ceny_img - begin_y + 0.5
+        return cen_x, cen_y
+
+    def get_model_radec(self, source: Mapping[str, Any], cen_x: float, cen_y: float):
+        bbox = source.getFootprint().getBBox()
+        begin_x, begin_y = bbox.beginX, bbox.beginY
+        # multiprofit bottom left corner coords are 0, 0, not -0.5, -0.5
+        cen_x_img = cen_x + begin_x - 0.5
+        cen_y_img = cen_y + begin_y - 0.5
+        ra, dec = self.catexps[0].exposure.wcs.pixelToSky(cen_x_img, cen_y_img)
+        return ra.asDegrees(), dec.asDegrees()
+
+    def initialize_model(self, model: g2f.Model, source: Mapping[str, Any],
                          limits_x: g2f.LimitsD, limits_y: g2f.LimitsD):
         comps = model.sources[0].components
         sig_x = math.sqrt(source['base_SdssShape_xx'])
@@ -190,14 +212,7 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         limits_x.max = x_max
         limits_y.max = y_max
         try:
-            cenx_img, ceny_img = self.catexps[0].exposure.wcs.skyToPixel(
-                geom.SpherePoint(source['coord_ra'], source['coord_dec'])
-            )
-            bbox = source.getFootprint().getBBox()
-            beginx, beginy = bbox.beginX, bbox.beginY
-            # multiprofit bottom left corner coords are 0, 0, not -0.5, -0.5
-            cenx = cenx_img - beginx + 0.5
-            ceny = ceny_img - beginy + 0.5
+            cenx, ceny = self.get_model_cens(source)
         # TODO: determine which exceptions can occur above
         except Exception:
             cenx = observation.image.n_cols/2.
@@ -209,20 +224,32 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
             g2f.CentroidYParameterD: ceny,
             g2f.ReffXParameterD: sig_x,
             g2f.ReffYParameterD: sig_y,
+            g2f.SigmaXParameterD: sig_x,
+            g2f.SigmaYParameterD: sig_y,
             g2f.RhoParameterD: -rho,
         }
+        # Do not initialize PSF size/rho: they'll all stay zero
+        params_psf_init = (g2f.IntegralParameterD, g2f.CentroidXParameterD, g2f.CentroidYParameterD)
+        values_init_psf = {key: values_init[key] for key in params_psf_init}
         size_major = g2.EllipseMajor(g2.Ellipse(sigma_x=sig_x, sigma_y=sig_y, rho=rho)).r_major
         # An R_eff larger than the box size is problematic
         # Also should stop unreasonable size proposals; log10 transform isn't enough
         # TODO: Try logit for r_eff?
+        flux_max = 5 * max([np.sum(np.abs(datum.image.data)) for datum in model.data])
+        flux_min = 1 / flux_max
+        limits_flux = g2f.LimitsD(flux_min, flux_max, 'unreliable flux limits')
+
         limits_init = {
-            g2f.IntegralParameterD: g2f.LimitsD(1e-6, 1e10),
+            g2f.IntegralParameterD: limits_flux,
             g2f.ReffXParameterD: g2f.LimitsD(1e-5, x_max),
             g2f.ReffYParameterD: g2f.LimitsD(1e-5, y_max),
+            g2f.SigmaXParameterD: g2f.LimitsD(1e-5, x_max),
+            g2f.SigmaYParameterD: g2f.LimitsD(1e-5, y_max),
         }
+        limits_init_psf = {g2f.IntegralParameterD: limits_init[g2f.IntegralParameterD]}
 
         for comp in comps[:n_psfs]:
-            self._init_component(comp, values_init=values_init, limits_init=limits_init)
+            self._init_component(comp, values_init=values_init_psf, limits_init=limits_init_psf)
         for comp in comps[n_psfs:]:
             self._init_component(comp, values_init=values_init, limits_init=limits_init)
         for prior in model.priors:
