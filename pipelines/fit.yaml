@@ -13,7 +13,7 @@ tasks:
       connections.cat_output: deepCoadd_psgauss_multiprofit
       python: |
         from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
-        from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
+        from lsst.multiprofit.componentconfig import SersicConfig, SersicIndexConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
         config.fit_coadd_multiband.n_pointsources = 1
         config.fit_coadd_multiband.sersics = {
@@ -29,7 +29,7 @@ tasks:
       connections.cat_output: deepCoadd_psexp_multiprofit
       python: |
         from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
-        from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
+        from lsst.multiprofit.componentconfig import SersicConfig, SersicIndexConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
         config.fit_coadd_multiband.n_pointsources = 1
         config.fit_coadd_multiband.sersics = {
@@ -45,7 +45,7 @@ tasks:
       connections.cat_output: deepCoadd_exp_multiprofit
       python: |
         from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
-        from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
+        from lsst.multiprofit.componentconfig import SersicConfig, SersicIndexConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
         config.fit_coadd_multiband.sersics = {
           "exp": SersicConfig(
@@ -60,7 +60,7 @@ tasks:
       connections.cat_output: deepCoadd_exp_fixedcen_multiprofit
       python: |
         from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
-        from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
+        from lsst.multiprofit.componentconfig import SersicConfig, SersicIndexConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
         config.fit_coadd_multiband.fit_cen_x = False
         config.fit_coadd_multiband.fit_cen_y = False
@@ -77,7 +77,7 @@ tasks:
       connections.cat_output: deepCoadd_psexpdev_multiprofit
       python: |
         from lsst.meas.extensions.multiprofit.fit_coadd_multiband import MultiProFitSourceTask
-        from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
+        from lsst.multiprofit.componentconfig import SersicConfig, SersicIndexConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
         config.fit_coadd_multiband.n_pointsources = 1
         config.fit_coadd_multiband.sersics = {

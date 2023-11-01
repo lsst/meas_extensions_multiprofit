@@ -26,7 +26,7 @@ import lsst.meas.extensions.multiprofit.fit_coadd_multiband as fitCMB
 import lsst.meas.extensions.multiprofit.fit_coadd_psf as fitCP
 
 import gauss2d.fit as g2f
-from multiprofit.componentconfig import SersicConfig, SersicIndexConfig
+from lsst.multiprofit.componentconfig import SersicConfig, SersicIndexConfig
 import numpy as np
 import os
 import pytest

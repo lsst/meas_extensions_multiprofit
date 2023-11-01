@@ -35,12 +35,12 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_multiband as fitMB
 import lsst.utils.timer as utilsTimer
 
-from multiprofit.config import set_config_from_dict
-from multiprofit.fit_psf import CatalogPsfFitterConfig
-from multiprofit.fit_source import (
+from lsst.multiprofit.config import set_config_from_dict
+from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig
+from lsst.multiprofit.fit_source import (
     CatalogExposureSourcesABC, CatalogSourceFitterABC, CatalogSourceFitterConfig,
 )
-from multiprofit.utils import get_params_uniq
+from lsst.multiprofit.utils import get_params_uniq
 
 from typing import Type
 

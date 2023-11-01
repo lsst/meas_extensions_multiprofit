@@ -37,9 +37,9 @@ except Exception:
     has_mrCutout = False
 import lsst.pipe.tasks.fit_multiband as fitMb
 import matplotlib.pyplot as plt
-import multiprofit.fitutils as mpfFit
-import multiprofit.objects as mpfObj
-from multiprofit.priors import get_hst_size_prior
+import lsst.multiprofit.fitutils as mpfFit
+import lsst.multiprofit.objects as mpfObj
+from lsst.multiprofit.priors import get_hst_size_prior
 import numpy as np
 import os
 import pprint
