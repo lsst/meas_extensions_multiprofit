@@ -53,7 +53,7 @@ pixel_scale_hsc = 0.168
 
 
 class FitFailedError(RuntimeError):
-    pass
+    """RuntimeError for a non-specific fit failure"""
 
 
 class MultiProFitConfig(fitMb.MultibandFitSubConfig):
@@ -64,6 +64,7 @@ class MultiProFitConfig(fitMb.MultibandFitSubConfig):
     gaussianOrderSersic only has a limited number of valid values
     (those supported by multiprofit's MultiGaussianApproximationComponent).
     """
+
     backgroundPriorMultiplier = pexConfig.Field(dtype=float, default=0.,
                                                 doc="Multiplier for background level prior sigma")
     backgroundSigmaAdd = pexConfig.Field(dtype=float, default=10,
@@ -393,6 +394,7 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
     https://github.com/lsst-dm/modelling_research for various investigations of
     its suitability for LSST data.
     """
+
     ConfigClass = MultiProFitConfig
     _DefaultName = "multibandProFit"
     meas_modelfit_models = ("dev", "exp", "cmodel")
@@ -661,7 +663,7 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
             a new one.
 
         Notes
-        -------
+        -----
         The new field is added to `schema` and a reference to it is stored in
         `extra`.
         """
@@ -1382,9 +1384,6 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         index : `int`, optional
             The index of the value in `fit`, if it is a container.
             Ignored if None (default).
-        Returns
-        -------
-        None
         """
         if nameFit is None:
             nameFit = name

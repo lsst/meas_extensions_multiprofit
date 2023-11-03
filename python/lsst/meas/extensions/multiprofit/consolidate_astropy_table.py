@@ -30,11 +30,15 @@ import numpy as np
 
 
 class CatalogAction(ConfigurableAction):
+    """Configurable action to return a catalog."""
+
     def __call__(self, data, **kwargs):
         return data
 
 
 class MergeMultibandFluxes(CatalogAction):
+    """Configurable action to merge single-band flux tables into one."""
+
     name_model = pexConfig.Field[str](doc="The name of the model that fluxes are measured from", default="")
 
     def __call__(self, data, **kwargs):
@@ -83,6 +87,8 @@ class MergeMultibandFluxes(CatalogAction):
 
 
 class InputConfig(pexConfig.Config):
+    """Config for inputs to ConsolidateAstropyTableTask"""
+
     doc = pexConfig.Field[str](doc="Doc for connection", optional=False)
     action = ConfigurableActionField[CatalogAction](
         doc="Action to modify the input table",
@@ -97,6 +103,8 @@ class InputConfig(pexConfig.Config):
 
 
 class ConsolidateAstropyTableConfigBase(pexConfig.Config):
+    """Config for ConsolidateAstropyTableTask"""
+
     inputs = pexConfig.ConfigDictField(
         doc="Mapping of input dataset type config by name",
         keytype=str,
@@ -107,6 +115,8 @@ class ConsolidateAstropyTableConfigBase(pexConfig.Config):
 
 class ConsolidateAstropyTableConnections(pipeBase.PipelineTaskConnections,
                                          dimensions=("tract", "skymap")):
+    """Connections for ConsolidateAstropyTableTask"""
+
     cat_output = connectionTypes.Output(
         doc="Per-tract horizontal concatenation of the input AstropyTables",
         name="objectAstropyTable_tract",
@@ -137,12 +147,12 @@ class ConsolidateAstropyTableConnections(pipeBase.PipelineTaskConnections,
 
 class ConsolidateAstropyTableConfig(pipeBase.PipelineTaskConfig, ConsolidateAstropyTableConfigBase,
                                     pipelineConnections=ConsolidateAstropyTableConnections):
-    pass
+    """PipelineTaskConfig for ConsolidateAstropyTableTask"""
 
 
 class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
-    """Write patch-merged astropy tables to a tract-level astropy table.
-    """
+    """Write patch-merged astropy tables to a tract-level astropy table."""
+
     _DefaultName = "consolidateAstropyTable"
     ConfigClass = ConsolidateAstropyTableConfig
 

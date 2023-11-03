@@ -48,13 +48,13 @@ from .utils import get_spanned_image
 
 
 class NotPrimaryError(RuntimeError):
-    pass
+    """RuntimeError for sources that are not primary and shouldn't be fit"""
 
 
 @dataclass(frozen=True, kw_only=True, config=fitMB.CatalogExposureConfig)
 class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC):
-    """ Input data from lsst pipelines, parsed for MultiProFit.
-    """
+    """Input data from lsst pipelines, parsed for MultiProFit"""
+
     channel: g2f.Channel = pydantic.Field(title="Channel for the image's band")
     config_fit: CatalogSourceFitterConfig = pydantic.Field(title="Channel for the image's band")
 
@@ -99,6 +99,7 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
 
 class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFitSubConfig):
     """Configuration for the MultiProFit profile fitter."""
+
     bands_fit = pexConfig.ListField(dtype=str, default=[], doc="list of bandpass filters to fit",
                                     listCheck=lambda x: len(set(x)) == len(x))
     fit_linear = pexConfig.Field[bool](default=True, doc="Fit linear parameters to initialize")
@@ -128,6 +129,7 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
     -----
     See https://github.com/lsst-dm/multiprofit for more MultiProFit info.
     """
+
     ConfigClass = MultiProFitSourceConfig
     _DefaultName = "multiProFitSource"
 
@@ -232,8 +234,8 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         params_psf_init = (g2f.IntegralParameterD, g2f.CentroidXParameterD, g2f.CentroidYParameterD)
         values_init_psf = {key: values_init[key] for key in params_psf_init}
         size_major = g2.EllipseMajor(g2.Ellipse(sigma_x=sig_x, sigma_y=sig_y, rho=rho)).r_major
-        # An R_eff larger than the box size is problematic
-        # Also should stop unreasonable size proposals; log10 transform isn't enough
+        # An R_eff larger than the box size is problematic. This should also
+        # stop unreasonable size proposals; a log10 transform isn't enough.
         # TODO: Try logit for r_eff?
         flux_max = 5 * max([np.sum(np.abs(datum.image.data)) for datum in model.data])
         flux_min = 1 / flux_max
@@ -283,14 +285,14 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
             A table with fit parameters for the PSF model at the location
             of each source.
         """
-
         catexps_conv = [None]*len(catexps)
         for idx, catexp in enumerate(catexps):
             if isinstance(catexp, CatalogExposurePsfs):
                 catexps_conv[idx] = catexp
             else:
                 catexps_conv[idx] = CatalogExposurePsfs(
-                    # dataclasses.asdict(catexp)_ makes a recursive deep copy and must be avoided
+                    # dataclasses.asdict(catexp)_makes a recursive deep copy.
+                    # That must be avoided.
                     **{key: getattr(catexp, key) for key in catexp.__dataclass_fields__.keys()},
                     channel=g2f.Channel.get(catexp.band),
                     config_fit=self.config,

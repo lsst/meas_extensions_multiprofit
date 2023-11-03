@@ -38,6 +38,7 @@ class CatalogExposure(fitCP.CatalogExposurePsf, CatalogExposurePsfABC):
 
 class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
     """Configuration for the MultiProFit Gaussian mixture PSF fitter."""
+
     fit_linear = pexConfig.Field[bool](default=True, doc="Fit linear parameters to initialize")
     prefix_column = pexConfig.Field[str](default="mpf_psf_", doc="Column name prefix")
 
@@ -57,6 +58,7 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
     -----
     See https://github.com/lsst-dm/multiprofit for more MultiProFit info.
     """
+
     ConfigClass = MultiProFitPsfConfig
     _DefaultName = "multiProFitPsf"
 
