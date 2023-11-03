@@ -82,12 +82,12 @@ def get_spanned_image(
     if spans is None:
         spans = footprint.getSpans().asArray()
     sig_inv = None
-    img = afwImage.Image(bbox, dtype='D')
+    img = afwImage.Image(bbox, dtype="D")
     maskedIm = exposure.photoCalib.calibrateImage(exposure.maskedImage.subset(bbox))
     img.array[spans] = maskedIm.image.array[spans]
     if get_sig_inv:
-        sig_inv = afwImage.Image(bbox, dtype='D').array
-        sig_inv[spans] = 1/np.sqrt(maskedIm.variance.array[spans])
+        sig_inv = afwImage.Image(bbox, dtype="D").array
+        sig_inv[spans] = 1 / np.sqrt(maskedIm.variance.array[spans])
     return img.array, bbox, sig_inv
 
 

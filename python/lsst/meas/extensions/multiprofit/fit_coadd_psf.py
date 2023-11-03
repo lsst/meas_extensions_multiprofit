@@ -63,7 +63,7 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
     _DefaultName = "multiProFitPsf"
 
     def __init__(self, **kwargs):
-        errors_expected = {} if 'errors_expected' not in kwargs else kwargs.pop('errors_expected')
+        errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
         if InvalidParameterError not in errors_expected:
             # Cannot compute CoaddPsf at point (x, y)
             errors_expected[InvalidParameterError] = "no_inputs_flag"

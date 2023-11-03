@@ -30,8 +30,10 @@ from lsst.meas.modelfit.display import buildCModelImages
 from lsst.meas.modelfit.cmodel.cmodelContinued import CModelConfig
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+
 try:
     import modelling_research.make_cutout as mrCutout
+
     has_mrCutout = True
 except Exception:
     has_mrCutout = False
@@ -65,12 +67,18 @@ class MultiProFitConfig(fitMb.MultibandFitSubConfig):
     (those supported by multiprofit's MultiGaussianApproximationComponent).
     """
 
-    backgroundPriorMultiplier = pexConfig.Field(dtype=float, default=0.,
-                                                doc="Multiplier for background level prior sigma")
-    backgroundSigmaAdd = pexConfig.Field(dtype=float, default=10,
-                                         doc="Multiple of background level sigma to add to image for fits")
-    bands_fit = pexConfig.ListField(dtype=str, default=[], doc="List of bandpass filters to fit",
-                                    listCheck=lambda x: len(set(x)) == len(x))
+    backgroundPriorMultiplier = pexConfig.Field(
+        dtype=float, default=0.0, doc="Multiplier for background level prior sigma"
+    )
+    backgroundSigmaAdd = pexConfig.Field(
+        dtype=float, default=10, doc="Multiple of background level sigma to add to image for fits"
+    )
+    bands_fit = pexConfig.ListField(
+        dtype=str,
+        default=[],
+        doc="List of bandpass filters to fit",
+        listCheck=lambda x: len(set(x)) == len(x),
+    )
     bboxDilate = pexConfig.Field(
         dtype=int,
         default=0,
@@ -87,27 +95,30 @@ class MultiProFitConfig(fitMb.MultibandFitSubConfig):
         doc="Whether to fit parents simultaneously with children",
     )
     deblendFromDeblendedFits = pexConfig.Field(
-        dtype=bool, default=False, doc="Whether to fit parents simultaneously and linearly using prior "
-                                       "fits to deblended children")
+        dtype=bool,
+        default=False,
+        doc="Whether to fit parents simultaneously and linearly using prior " "fits to deblended children",
+    )
     deblendNonlinearMaxSources = pexConfig.Field(
-        dtype=int, default=0, doc="Maximum children in blend to allow simultaneous non-linear fit")
+        dtype=int, default=0, doc="Maximum children in blend to allow simultaneous non-linear fit"
+    )
     disableNoiseReplacer = pexConfig.Field(
         dtype=bool,
         default=False,
         doc="Whether to disable replacement of nearby sources with noise"
-            "when fitting deblended single sources",
+        "when fitting deblended single sources",
     )
     estimateContiguousDenoisedMoments = pexConfig.Field(
         dtype=bool,
         default=True,
         doc="Whether models initiated from moments should estimate within contiguous positive pixels in a"
-            " naively de-noised image",
+        " naively de-noised image",
     )
     field_localbg = pexConfig.Field(
         dtype=str,
-        default='base_LocalBackground',
+        default="base_LocalBackground",
         doc="Field name (prefix to _instFlux) to read the local background level from if "
-            "usePriorBackgroundLocalEstimate is True",
+        "usePriorBackgroundLocalEstimate is True",
     )
     filenameOut = pexConfig.Field(dtype=str, optional=True, doc="Filename for output of FITS table")
     filenameOutDeblend = pexConfig.Field(
@@ -124,102 +135,155 @@ class MultiProFitConfig(fitMb.MultibandFitSubConfig):
         dtype=bool,
         default=True,
         doc="Whether to perform a CModel (linear combo of exponential and deVaucouleurs) fit per source;"
-            "necessitates doing exp. + deV. fits",
+        "necessitates doing exp. + deV. fits",
     )
-    fitCModelExp = pexConfig.Field(dtype=bool, default=False,
-                                   doc="Whether to perform an exponential fit with a fixed center (as "
-                                       "CModel does in meas_modelfit) per source")
-    fitGaussian = pexConfig.Field(dtype=bool, default=False,
-                                  doc="Whether to perform a single Gaussian fit without PSF convolution")
-    fitGaussianPsfConv = pexConfig.Field(dtype=bool, default=True,
-                                         doc="Whether to perform a PSF-convolved single Gaussian fit")
-    fitHstCosmos = pexConfig.Field(dtype=bool, default=False,
-                                   doc="Whether to fit COSMOS HST F814W images instead of repo images")
-    fitDevExpFromCModel = pexConfig.Field(dtype=bool, default=False,
-                                          doc="Whether to perform a MG Sersic approximation Dev+Exp profile "
-                                              "fit (initialized from previous exp./Dev. fits) per source")
-    fitPrereqs = pexConfig.Field(dtype=bool, default=False, doc="Set fit(Model) flags for necessary "
-                                                                "prerequisites even if not specified")
-    fitSersic = pexConfig.Field(dtype=bool, default=True, doc="Whether to perform a MG Sersic approximation "
-                                                              "profile fit per source")
-    fitSersicFromCModel = pexConfig.Field(dtype=bool, default=False,
-                                          doc="Whether to perform a MG Sersic approximation profile fit "
-                                              "(initalized from previous exp./dev. fits) per source;"
-                                              " ignored if fitCModel is False")
-    fitSersicFromGauss = pexConfig.Field(dtype=bool, default=True,
-                                         doc="Whether to perform a MG Sersic approximation profile fit "
-                                             "(initalized from previous gauss fit) per source")
-    fitSersicAmplitude = pexConfig.Field(dtype=bool, default=True,
-                                         doc="Whether to perform a linear fit of the Gaussian"
-                                             " amplitudes for the MG Sersic approximation profile fit per"
-                                             " source; has no impact if fitSersic is False")
-    fitSersicFromCModelAmplitude = pexConfig.Field(dtype=bool, default=True,
-                                                   doc="Whether to perform a linear fit of the Gaussian"
-                                                       " amplitudes for the MG Sersic approximation profile"
-                                                       " fit (initialized from previous exp.Dev. fits) per"
-                                                       " source; has no impact if fitSersicFromCModel is"
-                                                       " False")
-    fitSersicX2FromDevExp = pexConfig.Field(dtype=bool, default=False,
-                                            doc="Whether to perform a MG Sersic approximation SersicX2 "
-                                                "profile fit (initialized from previous devExp fit) per "
-                                                "source; ignored if fitDevExpFromCModel is False")
-    fitSersicX2DEAmplitude = pexConfig.Field(dtype=bool, default=False,
-                                             doc="Whether to perform a linear fit of the Gaussian "
-                                                 "amplitudes for the MG SersicX2 approximation profile fit "
-                                                 "for each source; ignored if fitSersicX2FromDevExp is False")
-    fitSersicX2FromSerExp = pexConfig.Field(dtype=bool, default=False,
-                                            doc="Whether to perform a MG Sersic approximation SersicX2 "
-                                                "profile fit (initialized from previous serExp fit) per "
-                                                "source; ignored if fitSersicFromCModel is False")
-    fitSersicX2SEAmplitude = pexConfig.Field(dtype=bool, default=False,
-                                             doc="Whether to perform a linear fit of the Gaussian "
-                                                 "amplitudes for the MG SersicX2 approximation profile fit "
-                                                 "for each source; ignored if fitSersicX2FromSeRExp is False")
+    fitCModelExp = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to perform an exponential fit with a fixed center (as "
+        "CModel does in meas_modelfit) per source",
+    )
+    fitGaussian = pexConfig.Field(
+        dtype=bool, default=False, doc="Whether to perform a single Gaussian fit without PSF convolution"
+    )
+    fitGaussianPsfConv = pexConfig.Field(
+        dtype=bool, default=True, doc="Whether to perform a PSF-convolved single Gaussian fit"
+    )
+    fitHstCosmos = pexConfig.Field(
+        dtype=bool, default=False, doc="Whether to fit COSMOS HST F814W images instead of repo images"
+    )
+    fitDevExpFromCModel = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to perform a MG Sersic approximation Dev+Exp profile "
+        "fit (initialized from previous exp./Dev. fits) per source",
+    )
+    fitPrereqs = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Set fit(Model) flags for necessary " "prerequisites even if not specified",
+    )
+    fitSersic = pexConfig.Field(
+        dtype=bool, default=True, doc="Whether to perform a MG Sersic approximation " "profile fit per source"
+    )
+    fitSersicFromCModel = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to perform a MG Sersic approximation profile fit "
+        "(initalized from previous exp./dev. fits) per source;"
+        " ignored if fitCModel is False",
+    )
+    fitSersicFromGauss = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Whether to perform a MG Sersic approximation profile fit "
+        "(initalized from previous gauss fit) per source",
+    )
+    fitSersicAmplitude = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Whether to perform a linear fit of the Gaussian"
+        " amplitudes for the MG Sersic approximation profile fit per"
+        " source; has no impact if fitSersic is False",
+    )
+    fitSersicFromCModelAmplitude = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Whether to perform a linear fit of the Gaussian"
+        " amplitudes for the MG Sersic approximation profile"
+        " fit (initialized from previous exp.Dev. fits) per"
+        " source; has no impact if fitSersicFromCModel is"
+        " False",
+    )
+    fitSersicX2FromDevExp = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to perform a MG Sersic approximation SersicX2 "
+        "profile fit (initialized from previous devExp fit) per "
+        "source; ignored if fitDevExpFromCModel is False",
+    )
+    fitSersicX2DEAmplitude = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to perform a linear fit of the Gaussian "
+        "amplitudes for the MG SersicX2 approximation profile fit "
+        "for each source; ignored if fitSersicX2FromDevExp is False",
+    )
+    fitSersicX2FromSerExp = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to perform a MG Sersic approximation SersicX2 "
+        "profile fit (initialized from previous serExp fit) per "
+        "source; ignored if fitSersicFromCModel is False",
+    )
+    fitSersicX2SEAmplitude = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to perform a linear fit of the Gaussian "
+        "amplitudes for the MG SersicX2 approximation profile fit "
+        "for each source; ignored if fitSersicX2FromSeRExp is False",
+    )
     gaussianOrderPsf = pexConfig.Field(dtype=int, default=2, doc="Number of Gaussians components for the PSF")
-    gaussianOrderSersic = pexConfig.Field(dtype=int, default=8, doc="Number of Gaussians components for the "
-                                                                    "MG Sersic approximation galaxy profile")
+    gaussianOrderSersic = pexConfig.Field(
+        dtype=int,
+        default=8,
+        doc="Number of Gaussians components for the " "MG Sersic approximation galaxy profile",
+    )
     gaussianSizePriorSigma = pexConfig.Field(
-        dtype=float, default=0.2, doc="Std. dev. of the size (sigma) prior for the Gaussian model (pixels)")
+        dtype=float, default=0.2, doc="Std. dev. of the size (sigma) prior for the Gaussian model (pixels)"
+    )
     idx_begin = pexConfig.Field(dtype=int, default=0, doc="Initial row index to fit")
     idx_end = pexConfig.Field(dtype=int, default=-1, doc="Final row index to fit")
-    intervalOutput = pexConfig.Field(dtype=int, default=100, doc="Number of sources to fit before writing "
-                                                                 "output")
+    intervalOutput = pexConfig.Field(
+        dtype=int, default=100, doc="Number of sources to fit before writing " "output"
+    )
     isolatedOnly = pexConfig.Field(dtype=bool, default=False, doc="Whether to fit only isolated sources")
-    maxParentFootprintPixels = pexConfig.Field(dtype=int, default=1000000,
-                                               doc="Maximum number of pixels in a parent footprint allowed "
-                                                   "before failing or reverting to child footprint")
-    maxNChildParentFit = pexConfig.Field(dtype=int, default=25, doc="Maximum number of children allowed to "
-                                                                    "fit a parent footprint")
-    outputChisqred = pexConfig.Field(dtype=bool, default=True, doc="Whether to save the reduced chi^2 of "
-                                                                   "each model's best fit")
-    outputLogLikelihood = pexConfig.Field(dtype=bool, default=True, doc="Whether to save the log likelihood "
-                                                                        "of each model's best fit")
+    maxParentFootprintPixels = pexConfig.Field(
+        dtype=int,
+        default=1000000,
+        doc="Maximum number of pixels in a parent footprint allowed "
+        "before failing or reverting to child footprint",
+    )
+    maxNChildParentFit = pexConfig.Field(
+        dtype=int, default=25, doc="Maximum number of children allowed to " "fit a parent footprint"
+    )
+    outputChisqred = pexConfig.Field(
+        dtype=bool, default=True, doc="Whether to save the reduced chi^2 of " "each model's best fit"
+    )
+    outputLogLikelihood = pexConfig.Field(
+        dtype=bool, default=True, doc="Whether to save the log likelihood " "of each model's best fit"
+    )
     outputRuntime = pexConfig.Field(dtype=bool, default=True, doc="Whether to save the runtime of each model")
     pathCosmosGalsim = pexConfig.Field(
-        dtype=str, optional=True,
+        dtype=str,
+        optional=True,
         doc="Path containing COSMOST HST F814W-based real_galaxy_catalog_25.2.fits and "
-            "real_galaxy_PSF_images_25.2_n[1-88].fits (https://zenodo.org/record/3242143)"
+        "real_galaxy_PSF_images_25.2_n[1-88].fits (https://zenodo.org/record/3242143)",
     )
     plot = pexConfig.Field(dtype=bool, default=False, doc="Whether to plot each source fit")
-    plotOnly = pexConfig.Field(dtype=bool, default=False, doc="Whether to only attempt to plot existing "
-                                                              "fits; requires resume=True")
+    plotOnly = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to only attempt to plot existing " "fits; requires resume=True",
+    )
     printTrace = pexConfig.Field(dtype=bool, default=False, doc="Print traceback for errors")
     priorCentroidSigma = pexConfig.Field(dtype=float, optional=True, doc="Centroid prior sigma")
     priorMagBand = pexConfig.Field(dtype=str, optional=True, doc="Band of the magnitude to use for priors")
     priorMagField = pexConfig.Field(
         dtype=str,
-        default='base_PsfFlux_mag',
+        default="base_PsfFlux_mag",
         doc="Magnitude field to use for priors",
     )
     psfHwhmShrink = pexConfig.Field(
-        dtype=float, default=0.,
-        doc="Length (pix) to subtract from PSF HWHM (x,y) in quadrature before fitting PSF-convolved models"
+        dtype=float,
+        default=0.0,
+        doc="Length (pix) to subtract from PSF HWHM (x,y) in quadrature before fitting PSF-convolved models",
     )
     replaceDataByModel = pexConfig.Field(
         dtype=bool,
         default=False,
         doc="Whether to replace the actual data to fit with a noisy realization of each model by using its"
-            " initial parameters)"
+        " initial parameters)",
     )
     resume = pexConfig.Field(dtype=bool, default=False, doc="Whether to resume from the previous output file")
     skipDeblendTooManyPeaks = pexConfig.Field(
@@ -248,9 +312,10 @@ class MultiProFitConfig(fitMb.MultibandFitSubConfig):
         doc="Whether to use the default shape prior",
     )
     usePriorBackgroundLocalEstimate = pexConfig.Field(
-        dtype=bool, default=False,
+        dtype=bool,
+        default=False,
         doc="Whether to use a local estimate of the background level to set the"
-            " background prior mean/sigma; generally a bad idea",
+        " background prior mean/sigma; generally a bad idea",
     )
 
     def bands_read_only(self):
@@ -276,107 +341,188 @@ class MultiProFitConfig(fitMb.MultibandFitSubConfig):
         allParams = "cenx;ceny;nser;sigma_x;sigma_y;rscale;rho"
         if self.fitPrereqs:
             prereqs = {
-                'fitGaussianPsfConv': ['fitSersicFromGauss', 'fitCModel'],
-                'fitSersic': ['fitSersicAmplitude'],
-                'fitSersicFromCModel': ['fitSersicFromCModelAmplitude', 'fitSersicX2FromSerExp'],
-                'fitCModel': ['fitSersicFromCModel', 'fitDevExpFromCModel'],
-                'fitSersicX2FromDevExp': ['fitSersicX2DEAmplitude'],
-                'fitDevExpFromCModel': ['fitSersicX2FromDevExp'],
-                'fitSersicX2FromSerExp': ['fitSersicX2SEAmplitude'],
+                "fitGaussianPsfConv": ["fitSersicFromGauss", "fitCModel"],
+                "fitSersic": ["fitSersicAmplitude"],
+                "fitSersicFromCModel": ["fitSersicFromCModelAmplitude", "fitSersicX2FromSerExp"],
+                "fitCModel": ["fitSersicFromCModel", "fitDevExpFromCModel"],
+                "fitSersicX2FromDevExp": ["fitSersicX2DEAmplitude"],
+                "fitDevExpFromCModel": ["fitSersicX2FromDevExp"],
+                "fitSersicX2FromSerExp": ["fitSersicX2SEAmplitude"],
             }
             for req, depends in prereqs.items():
                 dict_self = self.toDict()
                 if (not dict_self[req]) and any([dict_self[dep] for dep in depends]):
                     self.update(**{req: True})
         defaults = {
-            'psfmodel': namePsfModel,
-            'psfpixel': True,
+            "psfmodel": namePsfModel,
+            "psfpixel": True,
         }
         init_values = self.plotOnly or self.deblendFromDeblendedFits
         inittype_moments = "moments" if not init_values else "values"
         if self.fitGaussianPsfConv:
             modelSpecs.append(
                 mpfFit.ModelSpec(
-                    name="gausspx", model=nameSersicModel, fixedparams='nser', initparams="nser=0.5",
-                    inittype=inittype_moments, **defaults
+                    name="gausspx",
+                    model=nameSersicModel,
+                    fixedparams="nser",
+                    initparams="nser=0.5",
+                    inittype=inittype_moments,
+                    **defaults,
                 )
             )
         if self.fitCModel:
-            modelSpecs.extend([
-                mpfFit.ModelSpec(
-                    name=f"{nameMG}expgpx", model=nameSersicModel, fixedparams='nser', initparams="nser=1",
-                    inittype="guessgauss2exp:gausspx" if not init_values else "values", **defaults
-                ),
-                mpfFit.ModelSpec(
-                    name=f"{nameMG}devepx", model=nameSersicModel, fixedparams='nser', initparams="nser=4",
-                    inittype=f"guessexp2dev:{nameMG}expgpx" if not init_values else "values", **defaults
-                ),
-                mpfFit.ModelSpec(
-                    name=f"{nameMG}cmodelpx", model=f"{nameSersicPrefix}:2",
-                    fixedparams="cenx;ceny;nser;sigma_x;sigma_y;rho", initparams="nser=4,1",
-                    inittype=f"{nameMG}devepx;{nameMG}expgpx", **defaults
-                ),
-            ])
+            modelSpecs.extend(
+                [
+                    mpfFit.ModelSpec(
+                        name=f"{nameMG}expgpx",
+                        model=nameSersicModel,
+                        fixedparams="nser",
+                        initparams="nser=1",
+                        inittype="guessgauss2exp:gausspx" if not init_values else "values",
+                        **defaults,
+                    ),
+                    mpfFit.ModelSpec(
+                        name=f"{nameMG}devepx",
+                        model=nameSersicModel,
+                        fixedparams="nser",
+                        initparams="nser=4",
+                        inittype=f"guessexp2dev:{nameMG}expgpx" if not init_values else "values",
+                        **defaults,
+                    ),
+                    mpfFit.ModelSpec(
+                        name=f"{nameMG}cmodelpx",
+                        model=f"{nameSersicPrefix}:2",
+                        fixedparams="cenx;ceny;nser;sigma_x;sigma_y;rho",
+                        initparams="nser=4,1",
+                        inittype=f"{nameMG}devepx;{nameMG}expgpx",
+                        **defaults,
+                    ),
+                ]
+            )
             if self.fitSersicFromCModel:
-                modelSpecs.append(mpfFit.ModelSpec(
-                    name=f"{nameMG}serbpx", model=nameSersicModel, fixedparams='', initparams='',
-                    inittype="best" if not init_values else "values", **defaults
-                ))
+                modelSpecs.append(
+                    mpfFit.ModelSpec(
+                        name=f"{nameMG}serbpx",
+                        model=nameSersicModel,
+                        fixedparams="",
+                        initparams="",
+                        inittype="best" if not init_values else "values",
+                        **defaults,
+                    )
+                )
                 if self.fitSersicFromCModelAmplitude:
-                    modelSpecs.append(mpfFit.ModelSpec(
-                        name=f"{nameMG}serbapx", model=nameSersicAmpModel, fixedparams=allParams,
-                        initparams="rho=inherit;rscale=modify", inittype=f"{nameMG}serbpx",
-                        unlimitedparams="sigma_x;sigma_y", **defaults
-                    ))
+                    modelSpecs.append(
+                        mpfFit.ModelSpec(
+                            name=f"{nameMG}serbapx",
+                            model=nameSersicAmpModel,
+                            fixedparams=allParams,
+                            initparams="rho=inherit;rscale=modify",
+                            inittype=f"{nameMG}serbpx",
+                            unlimitedparams="sigma_x;sigma_y",
+                            **defaults,
+                        )
+                    )
                 if self.fitSersicX2FromSerExp:
-                    modelSpecs.append(mpfFit.ModelSpec(
-                        name=f"{nameMG}serx2sepx", model=nameSersicX2Model, fixedparams='', initparams='',
-                        inittype=f"{nameMG}serbpx;{nameMG}expgpx" if not init_values else "values", **defaults
-                    ))
+                    modelSpecs.append(
+                        mpfFit.ModelSpec(
+                            name=f"{nameMG}serx2sepx",
+                            model=nameSersicX2Model,
+                            fixedparams="",
+                            initparams="",
+                            inittype=f"{nameMG}serbpx;{nameMG}expgpx" if not init_values else "values",
+                            **defaults,
+                        )
+                    )
                     if self.fitSersicX2SEAmplitude:
-                        modelSpecs.append(mpfFit.ModelSpec(
-                            name=f"{nameMG}serx2seapx", model=nameSersicX2AmpModel, fixedparams=allParams,
-                            initparams="rho=inherit;rscale=modify", inittype=f"{nameMG}serx2sepx",
-                            unlimitedparams="sigma_x;sigma_y", **defaults
-                        ))
+                        modelSpecs.append(
+                            mpfFit.ModelSpec(
+                                name=f"{nameMG}serx2seapx",
+                                model=nameSersicX2AmpModel,
+                                fixedparams=allParams,
+                                initparams="rho=inherit;rscale=modify",
+                                inittype=f"{nameMG}serx2sepx",
+                                unlimitedparams="sigma_x;sigma_y",
+                                **defaults,
+                            )
+                        )
             if self.fitDevExpFromCModel:
-                modelSpecs.append(mpfFit.ModelSpec(
-                    name=f"{nameMG}devexppx", model=nameSersicX2Model,
-                    fixedparams='nser', initparams='nser=4,1',
-                    inittype=f"{nameMG}devepx;{nameMG}expgpx" if not init_values else "values",
-                    **defaults
-                ))
+                modelSpecs.append(
+                    mpfFit.ModelSpec(
+                        name=f"{nameMG}devexppx",
+                        model=nameSersicX2Model,
+                        fixedparams="nser",
+                        initparams="nser=4,1",
+                        inittype=f"{nameMG}devepx;{nameMG}expgpx" if not init_values else "values",
+                        **defaults,
+                    )
+                )
                 if self.fitSersicX2FromDevExp:
-                    modelSpecs.append(mpfFit.ModelSpec(
-                        name=f"{nameMG}serx2px", model=nameSersicX2Model, fixedparams='', initparams='',
-                        inittype=f"{nameMG}devexppx" if not init_values else "values", **defaults
-                    ))
+                    modelSpecs.append(
+                        mpfFit.ModelSpec(
+                            name=f"{nameMG}serx2px",
+                            model=nameSersicX2Model,
+                            fixedparams="",
+                            initparams="",
+                            inittype=f"{nameMG}devexppx" if not init_values else "values",
+                            **defaults,
+                        )
+                    )
                     if self.fitSersicX2DEAmplitude:
-                        modelSpecs.append(mpfFit.ModelSpec(
-                            name=f"{nameMG}serx2apx", model=nameSersicX2AmpModel, fixedparams=allParams,
-                            initparams="rho=inherit;rscale=modify", inittype=f"{nameMG}serx2px", **defaults
-                        ))
+                        modelSpecs.append(
+                            mpfFit.ModelSpec(
+                                name=f"{nameMG}serx2apx",
+                                model=nameSersicX2AmpModel,
+                                fixedparams=allParams,
+                                initparams="rho=inherit;rscale=modify",
+                                inittype=f"{nameMG}serx2px",
+                                **defaults,
+                            )
+                        )
         if self.fitCModelExp:
-            modelSpecs.append(mpfFit.ModelSpec(
-                name=f"{nameMG}expcmpx", model=nameSersicModel, fixedparams='cenx;ceny;nser',
-                initparams="nser=1", inittype="moments", **defaults
-            ))
+            modelSpecs.append(
+                mpfFit.ModelSpec(
+                    name=f"{nameMG}expcmpx",
+                    model=nameSersicModel,
+                    fixedparams="cenx;ceny;nser",
+                    initparams="nser=1",
+                    inittype="moments",
+                    **defaults,
+                )
+            )
         if self.fitSersicFromGauss:
-            modelSpecs.append(mpfFit.ModelSpec(
-                name=f"{nameMG}sergpx", model=nameSersicModel, fixedparams='', initparams="nser=1",
-                inittype="guessgauss2exp:gausspx" if not init_values else "values", **defaults
-            ))
+            modelSpecs.append(
+                mpfFit.ModelSpec(
+                    name=f"{nameMG}sergpx",
+                    model=nameSersicModel,
+                    fixedparams="",
+                    initparams="nser=1",
+                    inittype="guessgauss2exp:gausspx" if not init_values else "values",
+                    **defaults,
+                )
+            )
         if self.fitSersic:
-            modelSpecs.append(mpfFit.ModelSpec(
-                name=f"{nameMG}sermpx", model=nameSersicModel, fixedparams='', initparams="nser=1",
-                inittype=inittype_moments, **defaults
-            ))
+            modelSpecs.append(
+                mpfFit.ModelSpec(
+                    name=f"{nameMG}sermpx",
+                    model=nameSersicModel,
+                    fixedparams="",
+                    initparams="nser=1",
+                    inittype=inittype_moments,
+                    **defaults,
+                )
+            )
             if self.fitSersicAmplitude:
-                modelSpecs.append(mpfFit.ModelSpec(
-                    name=f"{nameMG}serapx", model=nameSersicAmpModel, fixedparams=allParams,
-                    initparams="rho=inherit;rscale=modify", inittype=f"{nameMG}sermpx",
-                    unlimitedparams="sigma_x;sigma_y", **defaults
-                ))
+                modelSpecs.append(
+                    mpfFit.ModelSpec(
+                        name=f"{nameMG}serapx",
+                        model=nameSersicAmpModel,
+                        fixedparams=allParams,
+                        initparams="rho=inherit;rscale=modify",
+                        inittype=f"{nameMG}sermpx",
+                        unlimitedparams="sigma_x;sigma_y",
+                        **defaults,
+                    )
+                )
         return modelSpecs
 
 
@@ -398,22 +544,22 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
     ConfigClass = MultiProFitConfig
     _DefaultName = "multibandProFit"
     meas_modelfit_models = ("dev", "exp", "cmodel")
-    keynames = {'runtimeKey': 'time_total', 'failFlagKey': 'fail_flag'}
-    ParamDesc = namedtuple('ParamInfo', ['doc', 'unit'])
+    keynames = {"runtimeKey": "time_total", "failFlagKey": "fail_flag"}
+    ParamDesc = namedtuple("ParamInfo", ["doc", "unit"])
     params_multiprofit = {
-        'cenx': ParamDesc('Centroid x coordinate', 'pixel'),
-        'ceny': ParamDesc('Centroid y coordinate', 'pixel'),
-        'flux': ParamDesc('Total flux', 'Jy'),
-        'nser': ParamDesc('Sersic index', ''),
-        'rho': ParamDesc('Ellipse correlation coefficient', ''),
-        'sigma_x': ParamDesc('Ellipse x half-light distance', 'pixel'),
-        'sigma_y': ParamDesc('Ellipse y half-light distance', 'pixel'),
-        'fluxFrac': ParamDesc('Flux fraction', ''),
+        "cenx": ParamDesc("Centroid x coordinate", "pixel"),
+        "ceny": ParamDesc("Centroid y coordinate", "pixel"),
+        "flux": ParamDesc("Total flux", "Jy"),
+        "nser": ParamDesc("Sersic index", ""),
+        "rho": ParamDesc("Ellipse correlation coefficient", ""),
+        "sigma_x": ParamDesc("Ellipse x half-light distance", "pixel"),
+        "sigma_y": ParamDesc("Ellipse y half-light distance", "pixel"),
+        "fluxFrac": ParamDesc("Flux fraction", ""),
     }
-    params_extra = {'chisqred', 'loglike', 'time', 'nEvalFunc', 'nEvalGrad'}
-    prefix = 'multiprofit_'
-    prefix_psf = 'psf_'
-    postfix_nopsf = '-nopsf'
+    params_extra = {"chisqred", "loglike", "time", "nEvalFunc", "nEvalGrad"}
+    prefix = "multiprofit_"
+    prefix_psf = "psf_"
+    postfix_nopsf = "-nopsf"
 
     @property
     def schema(self):
@@ -440,19 +586,22 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
             modelSpecs = self.config.getModelSpecs()
         self.modelSpecs = modelSpecs
         self.modelSpecsDict = {modelspec.name: modelspec for modelspec in modelSpecs}
-        self.modeller = mpfObj.Modeller(None, 'scipy')
+        self.modeller = mpfObj.Modeller(None, "scipy")
         self.models = {}
-        self.mask_names_zero = ['BAD', 'EDGE', 'SAT', 'NO_DATA']
+        self.mask_names_zero = ["BAD", "EDGE", "SAT", "NO_DATA"]
         self.bbox_ref = None
         # Initialize the schema, in case users need it before runtime
         img = gauss2d.make_gaussian_pixel(10, 10, 1, 3, 1, 0, 0, 20, 0, 20, 20, 20)
         exposurePsfs = [
-            (mpfObj.Exposure(band=band, image=img, error_inverse=None), img)
-            for band in self.config.bands_fit
+            (mpfObj.Exposure(band=band, image=img, error_inverse=None), img) for band in self.config.bands_fit
         ]
         results = mpfFit.fit_galaxy_exposures(
-            exposurePsfs, self.config.bands_fit, self.modelSpecs, skip_fit=True, skip_fit_psf=True,
-            logger=logging.Logger(name='multiProFitTask_init', level=21)
+            exposurePsfs,
+            self.config.bands_fit,
+            self.modelSpecs,
+            skip_fit=True,
+            skip_fit_psf=True,
+            logger=logging.Logger(name="multiProFitTask_init", level=21),
         )
         self._schema, self.mapper, self.fields = self.__getSchema(self.config.bands_fit, results, schema)
 
@@ -510,8 +659,14 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         return bbox, dilate
 
     def _getExposurePsfs(
-        self, exposures, source, extras, footprint=None,
-        failOnLargeFootprint=False, idx_src=None, idx_mask=None,
+        self,
+        exposures,
+        source,
+        extras,
+        footprint=None,
+        failOnLargeFootprint=False,
+        idx_src=None,
+        idx_mask=None,
     ):
         """Get exposure-PSF pairs as required by `multiprofit.fitutils`.
 
@@ -558,10 +713,12 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         spans = None
         area = bbox.getArea()
         if not (area > 0):
-            raise RuntimeError(f'Source bbox={bbox} has area={area} !>0')
+            raise RuntimeError(f"Source bbox={bbox} has area={area} !>0")
         elif failOnLargeFootprint and (area > self.config.maxParentFootprintPixels):
-            raise RuntimeError(f'Source footprint (fallback) area={area} pix exceeds '
-                               f'max={self.config.maxParentFootprintPixels}')
+            raise RuntimeError(
+                f"Source footprint (fallback) area={area} pix exceeds "
+                f"max={self.config.maxParentFootprintPixels}"
+            )
         center = bbox.getCenter()
         # TODO: Implement multi-object fitting/deblending
         # peaks = footprint.getPeaks()
@@ -573,9 +730,10 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
             wcs_src = next(iter(exposures.values())).getWcs()
             corners, cens = mrCutout.get_corners_src(source, wcs_src)
             exposure, cen_hst, psf = mrCutout.get_exposure_cutout_HST(
-                corners, cens, extras, get_inv_var=True, get_psf=True)
+                corners, cens, extras, get_inv_var=True, get_psf=True
+            )
             if np.sum(exposure.image > 0) == 0:
-                raise RuntimeError('HST cutout has zero positive pixels')
+                raise RuntimeError("HST cutout has zero positive pixels")
             exposurePsfs.append((exposure, psf))
         else:
             # Try to get all PSFs first, in case it fails
@@ -600,9 +758,9 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                 else:
                     if self.config.disableNoiseReplacer:
                         sources_extra, meta_extra = extra[1], extra[2]
-                        idx_extras = meta_extra['idx_add'][idx_src]
+                        idx_extras = meta_extra["idx_add"][idx_src]
                         if idx_extras:
-                            addition = afwImage.Image(bbox, dtype='F')
+                            addition = afwImage.Image(bbox, dtype="F")
                             for idx_extra in idx_extras:
                                 img_extra, bbox_extra = get_spanned_image(
                                     sources_extra[idx_extra].getFootprint()
@@ -619,22 +777,25 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                 img = np.float64(exposure.image.subset(bbox).array)
                 if addition is not None:
                     img += addition
-                err = np.sqrt(1. / np.float64(exposure.variance.subset(bbox).array))
+                err = np.sqrt(1.0 / np.float64(exposure.variance.subset(bbox).array))
                 if self.config.useSpans:
                     mask_span = afwImage.Mask(bbox)
                     if spans is None:
                         spans = footprint.getSpans()
                     spans.setMask(mask_span, 2)
-                    mask |= (mask_span.array == 0)
+                    mask |= mask_span.array == 0
 
                 err[mask] = 0
 
                 exposure_mpf = mpfObj.Exposure(
-                    band=band, image=img,
-                    error_inverse=err, is_error_sigma=True, mask_inverse=~mask, use_mask_inverse=True
+                    band=band,
+                    image=img,
+                    error_inverse=err,
+                    is_error_sigma=True,
+                    mask_inverse=~mask,
+                    use_mask_inverse=True,
                 )
-                psf_mpf = mpfObj.PSF(
-                    band, image=img_psf, engine="galsim")
+                psf_mpf = mpfObj.PSF(band, image=img_psf, engine="galsim")
                 exposurePsfs.append((exposure_mpf, psf_mpf))
 
         return exposurePsfs, footprint, bbox, cen_hst if fit_hst else None
@@ -668,16 +829,18 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         `extra`.
         """
         if doc is None:
-            doc = ''
+            doc = ""
         if unit is None:
-            unit = ''
-        fullname = join_and_filter('_', [prefix, name])
+            unit = ""
+        fullname = join_and_filter("_", [prefix, name])
         if exists:
             item = schema.find(fullname)
             field = item.field
             if field.dtype != dtype or field.getUnits() != unit:
-                raise RuntimeError(f'Existing field {field} has dtype {field.dtype}!={dtype} and/or units'
-                                   f'{field.getUnits()}!={unit}')
+                raise RuntimeError(
+                    f"Existing field {field} has dtype {field.dtype}!={dtype} and/or units"
+                    f"{field.getUnits()}!={unit}"
+                )
             key = item.key
         else:
             key = schema.addField(fullname, type=dtype, doc=doc, units=unit)
@@ -706,18 +869,23 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         in `extra`.
         """
         if self.config.outputChisqred:
-            self.__addExtraField(extra, schema, prefix, 'chisqred', 'reduced chi-squared of the best fit',
-                                 exists=exists)
+            self.__addExtraField(
+                extra, schema, prefix, "chisqred", "reduced chi-squared of the best fit", exists=exists
+            )
         if self.config.outputLogLikelihood:
-            self.__addExtraField(extra, schema, prefix, 'loglike', 'log-likelihood of the best fit',
-                                 exists=exists)
+            self.__addExtraField(
+                extra, schema, prefix, "loglike", "log-likelihood of the best fit", exists=exists
+            )
         if self.config.outputRuntime:
-            self.__addExtraField(extra, schema, prefix, 'time', 'model runtime excluding setup', unit='s',
-                                 exists=exists)
-        self.__addExtraField(extra, schema, prefix, 'nEvalFunc', 'number of objective function evaluations',
-                             exists=exists)
-        self.__addExtraField(extra, schema, prefix, 'nEvalGrad', 'number of Jacobian evaluations',
-                             exists=exists)
+            self.__addExtraField(
+                extra, schema, prefix, "time", "model runtime excluding setup", unit="s", exists=exists
+            )
+        self.__addExtraField(
+            extra, schema, prefix, "nEvalFunc", "number of objective function evaluations", exists=exists
+        )
+        self.__addExtraField(
+            extra, schema, prefix, "nEvalGrad", "number of Jacobian evaluations", exists=exists
+        )
 
     @staticmethod
     def __fitModel(model, exposurePsfs, modeller=None, sources=None, resetPsfs=False, **kwargs):
@@ -760,31 +928,49 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         model.data.exposures = exposures_no_psf
         params_free = [src.get_parameters(free=True) for src in model.sources]
         n_sources = len(sources)
-        if n_sources == 1 and ('sigma_x' not in sources[0]):
+        if n_sources == 1 and ("sigma_x" not in sources[0]):
             fluxes, sources[0], _, _, _ = mpfFit.get_init_from_moments(
-                exposurePsfs, cenx=sources[0].get('cenx', 0), ceny=sources[0].get('ceny', 0))
-            sources[0]['flux'] = fluxes
+                exposurePsfs, cenx=sources[0].get("cenx", 0), ceny=sources[0].get("ceny", 0)
+            )
+            sources[0]["flux"] = fluxes
         if n_sources != len(params_free):
-            raise ValueError(f'len(sources)={n_sources} != len(model.sources)={len(model.sources)}')
+            raise ValueError(f"len(sources)={n_sources} != len(model.sources)={len(model.sources)}")
         for values, params in zip(sources, params_free):
-            fluxes = values.get('flux', {})
+            fluxes = values.get("flux", {})
             for param in params:
-                value = fluxes.get(param.band, 1) if isinstance(param, mpfObj.FluxParameter) else \
-                    values.get(param.name)
-                if param.name.startswith('cen'):
-                    param.limits.upper = exposurePsfs[0][0].image.shape[param.name[-1] == 'x']
+                value = (
+                    fluxes.get(param.band, 1)
+                    if isinstance(param, mpfObj.FluxParameter)
+                    else values.get(param.name)
+                )
+                if param.name.startswith("cen"):
+                    param.limits.upper = exposurePsfs[0][0].image.shape[param.name[-1] == "x"]
                 if value is not None:
                     param.set_value(value)
         result, _ = mpfFit.fit_model(model=model, modeller=modeller, **kwargs)
         return result
 
     @pipeBase.timeMethod
-    def __fitSource(self, source, exposures, extras, children_cat=None,
-                    footprint=None, failOnLargeFootprint=False, row=None,
-                    usePriorShapeDefault=False, priorCentroidSigma=None, mag_prior=None,
-                    backgroundPriors=None, fields=None, idx_src=None, children_src=None, skip_fit=False,
-                    kwargs_moments=None,
-                    **kwargs):
+    def __fitSource(
+        self,
+        source,
+        exposures,
+        extras,
+        children_cat=None,
+        footprint=None,
+        failOnLargeFootprint=False,
+        row=None,
+        usePriorShapeDefault=False,
+        priorCentroidSigma=None,
+        mag_prior=None,
+        backgroundPriors=None,
+        fields=None,
+        idx_src=None,
+        children_src=None,
+        skip_fit=False,
+        kwargs_moments=None,
+        **kwargs,
+    ):
         """Fit a single deblended source with MultiProFit.
 
         Parameters
@@ -860,7 +1046,11 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
 
         try:
             exposurePsfs, footprint, bbox, cen_hst = self._getExposurePsfs(
-                exposures, source, extras, footprint=footprint, failOnLargeFootprint=failOnLargeFootprint,
+                exposures,
+                source,
+                extras,
+                footprint=footprint,
+                failOnLargeFootprint=failOnLargeFootprint,
                 idx_src=idx_src,
             )
             if not self.config.deblendFromDeblendedFits and not self.config.fitHstCosmos:
@@ -877,16 +1067,23 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                     scales = np.array([scale_x, scale_x])
                 sources = [{}]
                 if deblend_no_init or self.config.useSdssShape:
-                    for child in (children_cat if deblend_no_init else [source]):
-                        cen_child = ((cen_hst + scales*(child.getCentroid() - cen_src)) if fit_hst else (
-                            child.getCentroid() - begin)) if deblend_no_init else cens
-                        ellipse = {'cenx': cen_child[0], 'ceny': cen_child[1]}
-                        cov = child['base_SdssShape_xy']
+                    for child in children_cat if deblend_no_init else [source]:
+                        cen_child = (
+                            (
+                                (cen_hst + scales * (child.getCentroid() - cen_src))
+                                if fit_hst
+                                else (child.getCentroid() - begin)
+                            )
+                            if deblend_no_init
+                            else cens
+                        )
+                        ellipse = {"cenx": cen_child[0], "ceny": cen_child[1]}
+                        cov = child["base_SdssShape_xy"]
                         if np.isfinite(cov):
-                            sigma_x, sigma_y = (np.sqrt(child[f'base_SdssShape_{ax}']) for ax in ['xx', 'yy'])
+                            sigma_x, sigma_y = (np.sqrt(child[f"base_SdssShape_{ax}"]) for ax in ["xx", "yy"])
                             if sigma_x > 0 and sigma_y > 0:
-                                ellipse['rho'] = np.clip(cov / (sigma_x * sigma_y), rho_min, rho_max)
-                                ellipse['sigma_x'], ellipse['sigma_y'] = sigma_x, sigma_y
+                                ellipse["rho"] = np.clip(cov / (sigma_x * sigma_y), rho_min, rho_max)
+                                ellipse["sigma_x"], ellipse["sigma_y"] = sigma_x, sigma_y
                         sources.append(ellipse)
 
             bands = [item[0].band for item in exposurePsfs]
@@ -894,25 +1091,25 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
             if usePriorShapeDefault:
                 size_mean, size_stddev = get_hst_size_prior(mag_prior if np.isfinite(mag_prior) else np.Inf)
                 size_mean_stddev = (size_mean - np.log10(pixel_scale), size_stddev)
-                params_prior['shape'] = {
+                params_prior["shape"] = {
                     True: {
-                        'size_mean_std': (self.config.psfHwhmShrink, self.config.gaussianSizePriorSigma),
-                        'size_log10': False,
-                        'axrat_params': (-0.1, 0.5, 1.1),
+                        "size_mean_std": (self.config.psfHwhmShrink, self.config.gaussianSizePriorSigma),
+                        "size_log10": False,
+                        "axrat_params": (-0.1, 0.5, 1.1),
                     },
                     False: {
-                        'size_mean_std': size_mean_stddev,
-                        'size_log10': True,
-                        'axrat_params': (-0.3, 0.2, 1.2),
-                    }
+                        "size_mean_std": size_mean_stddev,
+                        "size_log10": True,
+                        "axrat_params": (-0.3, 0.2, 1.2),
+                    },
                 }
             if priorCentroidSigma is not None:
                 if not priorCentroidSigma > 0:
-                    raise ValueError(f'Invalid priorCentroidSigma={priorCentroidSigma} !>0')
-                for coord in ('cenx', 'ceny'):
+                    raise ValueError(f"Invalid priorCentroidSigma={priorCentroidSigma} !>0")
+                for coord in ("cenx", "ceny"):
                     params_prior[coord] = {
-                        True: {'stddev': priorCentroidSigma},
-                        False: {'stddev': priorCentroidSigma},
+                        True: {"stddev": priorCentroidSigma},
+                        False: {"stddev": priorCentroidSigma},
                     }
             if backgroundPriors:
                 priors_background = {}
@@ -920,66 +1117,84 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                     if bg_sigma is None:
                         exposure = exposurePsfs[idx_band][0]
                         if exposure.band != band:
-                            raise RuntimeError(f'exposure.band={exposure.band}!=band={band} setting bg prior')
+                            raise RuntimeError(f"exposure.band={exposure.band}!=band={band} setting bg prior")
                         err = exposure.error_inverse
                         pix_good = err > 0
-                        bg_sigma = np.nanmedian(np.sqrt(1/err[pix_good]))/np.sqrt(np.sum(pix_good))
+                        bg_sigma = np.nanmedian(np.sqrt(1 / err[pix_good])) / np.sqrt(np.sum(pix_good))
                     if not bg_sigma > 0:
-                        raise ValueError(f'Non-positive bg_sigma={bg_sigma}')
-                    priors_background[band] = {'mean': bg_mean, 'stddev': bg_sigma}
-                params_prior['background'] = priors_background
+                        raise ValueError(f"Non-positive bg_sigma={bg_sigma}")
+                    priors_background[band] = {"mean": bg_mean, "stddev": bg_sigma}
+                params_prior["background"] = priors_background
 
             deblend_from_fits = self.config.deblendFromDeblendedFits and children_cat is not None
             if not deblend_from_fits:
                 skip_fit = skip_fit or self.config.plotOnly
                 # No good reason to allow default centroids
                 kwargs_moments_in = kwargs_moments.copy()
-                kwargs_moments_in['cenx'], kwargs_moments_in['ceny'] = cens
+                kwargs_moments_in["cenx"], kwargs_moments_in["ceny"] = cens
                 results = mpfFit.fit_galaxy_exposures(
-                    exposurePsfs, bands, self.modelSpecs, plot=self.config.plot, print_exception=True,
-                    kwargs_moments=kwargs_moments_in, fit_background=self.config.fitBackground,
-                    psf_shrink=self.config.psfHwhmShrink, prior_specs=params_prior,
-                    skip_fit=skip_fit, skip_fit_psf=skip_fit, background_sigma_add=(
-                        self.config.backgroundSigmaAdd if self.config.fitBackground else None),
-                    replace_data_by_model=self.config.replaceDataByModel, loggerPsf=kwargs.get('logger'),
+                    exposurePsfs,
+                    bands,
+                    self.modelSpecs,
+                    plot=self.config.plot,
+                    print_exception=True,
+                    kwargs_moments=kwargs_moments_in,
+                    fit_background=self.config.fitBackground,
+                    psf_shrink=self.config.psfHwhmShrink,
+                    prior_specs=params_prior,
+                    skip_fit=skip_fit,
+                    skip_fit_psf=skip_fit,
+                    background_sigma_add=(
+                        self.config.backgroundSigmaAdd if self.config.fitBackground else None
+                    ),
+                    replace_data_by_model=self.config.replaceDataByModel,
+                    loggerPsf=kwargs.get("logger"),
                     **kwargs,
                 )
                 if (not self.config.plotOnly) and self.config.fitGaussian:
                     n_sources = len(sources)
-                    name_modeltype = f'gausspx{self.postfix_nopsf}'
-                    name_model_full = f'{name_modeltype}_{n_sources}'
+                    name_modeltype = f"gausspx{self.postfix_nopsf}"
+                    name_model_full = f"{name_modeltype}_{n_sources}"
                     if name_model_full in self.models:
                         model = self.models[name_model_full]
                     else:
                         bands = [x[0].band for x in exposurePsfs]
                         model = mpfFit.get_model(
-                            {band: 1 for band in bands}, "gaussian:1", (1, 1), slopes=[0.5],
-                            engine='galsim',
+                            {band: 1 for band in bands},
+                            "gaussian:1",
+                            (1, 1),
+                            slopes=[0.5],
+                            engine="galsim",
                             engineopts={
-                                'use_fast_gauss': True,
-                                'drawmethod': mpfObj.draw_method_pixel['galsim']
+                                "use_fast_gauss": True,
+                                "drawmethod": mpfObj.draw_method_pixel["galsim"],
                             },
-                            name_model=name_model_full
+                            name_model=name_model_full,
                         )
-                        for _ in range(n_sources-1):
+                        for _ in range(n_sources - 1):
                             model.sources.append(copy.deepcopy(model.sources[0]))
                         # Probably don't need to cache anything more than this
                         if n_sources < 10:
                             self.models[name_model_full] = model
                     self.modeller.model = model
                     result = self.__fitModel(
-                        model, exposurePsfs, modeller=self.modeller, sources=sources, resetPsfs=True,
+                        model,
+                        exposurePsfs,
+                        modeller=self.modeller,
+                        sources=sources,
+                        resetPsfs=True,
                         plot=self.config.plot and len(self.modelSpecs) == 0,
                     )
-                    results['fits']['galsim'][name_modeltype] = mpfFit.ModelFits(
-                        fits=[result], modeltype='gaussian:1',
+                    results["fits"]["galsim"][name_modeltype] = mpfFit.ModelFits(
+                        fits=[result],
+                        modeltype="gaussian:1",
                     )
-                    results['models']['gaussian:1'] = model
+                    results["models"]["gaussian:1"] = model
             else:
                 results = {}
                 kwargs_fit = {
-                    'do_linear_only': n_children > self.config.deblendNonlinearMaxSources,
-                    'replace_data_by_model': self.config.replaceDataByModel,
+                    "do_linear_only": n_children > self.config.deblendNonlinearMaxSources,
+                    "replace_data_by_model": self.config.replaceDataByModel,
                 }
                 skip_fit_psf = True
                 # Check if any PSF fit failed (e.g. because a large blend was
@@ -995,9 +1210,11 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                 bbox_cs = [None] * n_children
                 for idx_c, child_src in enumerate(children_src):
                     exposurePsfs_cs[idx_c], _, bbox_cs[idx_c], *_ = self._getExposurePsfs(
-                        exposures, child_src, extras,
+                        exposures,
+                        child_src,
+                        extras,
                         footprint=source.getFootprint() if self.config.useParentFootprint else None,
-                        failOnLargeFootprint=failOnLargeFootprint
+                        failOnLargeFootprint=failOnLargeFootprint,
                     )
                 # Check if a model fit failed (e.g. as above) and zero init
                 # params. Needs update if background model becomes non-linear
@@ -1014,18 +1231,30 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                             modelSpec.values_init = values_init_model
                             break
                 kwargs_moments_in = kwargs_moments.copy()
-                kwargs_moments_in['cenx'], kwargs_moments_in['ceny'] = cens
+                kwargs_moments_in["cenx"], kwargs_moments_in["ceny"] = cens
                 results_parent = mpfFit.fit_galaxy_exposures(
-                    exposurePsfs, bands, [self.modelSpecs[0]], plot=False, print_exception=True,
-                    kwargs_moments=kwargs_moments_in, fit_background=self.config.fitBackground,
-                    psf_shrink=self.config.psfHwhmShrink, skip_fit=True, skip_fit_psf=skip_fit_psf,
-                    loggerPsf=kwargs.get('logger'),
-                    **kwargs
+                    exposurePsfs,
+                    bands,
+                    [self.modelSpecs[0]],
+                    plot=False,
+                    print_exception=True,
+                    kwargs_moments=kwargs_moments_in,
+                    fit_background=self.config.fitBackground,
+                    psf_shrink=self.config.psfHwhmShrink,
+                    skip_fit=True,
+                    skip_fit_psf=skip_fit_psf,
+                    loggerPsf=kwargs.get("logger"),
+                    **kwargs,
                 )
                 filters = [x[0].band for x in exposurePsfs]
                 if not skip_fit_psf:
                     self.__setFieldsPsf(
-                        results_parent, fields["psf"], fields["psf_extra"], row, filters, key_index=1,
+                        results_parent,
+                        fields["psf"],
+                        fields["psf_extra"],
+                        row,
+                        filters,
+                        key_index=1,
                     )
                 fields_base = fields["base"]
                 values_init = {}
@@ -1035,7 +1264,7 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                     name_model = modelSpec.name
                     fields_base_model = fields_base[name_model]
 
-                    inittype_split = modelSpec.inittype.split(';')
+                    inittype_split = modelSpec.inittype.split(";")
                     # TODO: Come up with a better way to determine if
                     # initializing from other models
                     if inittype_split[0] in self.modelSpecsDict:
@@ -1045,17 +1274,22 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                         modelSpecs = [modelSpec]
 
                     _, models = mpfFit.fit_galaxy(
-                        exposurePsfs, modelSpecs, fit_background=self.config.fitBackground, skip_fit=True,
-                        background_sigma_add=(self.config.backgroundSigmaAdd if self.config.fitBackground
-                                              else None),
+                        exposurePsfs,
+                        modelSpecs,
+                        fit_background=self.config.fitBackground,
+                        skip_fit=True,
+                        background_sigma_add=(
+                            self.config.backgroundSigmaAdd if self.config.fitBackground else None
+                        ),
                     )
                     model = models[name_modeltype]
                     sources_bg = []
                     for source_model in model.sources:
                         if isinstance(source_model, mpfObj.Background):
                             if not self.config.fitBackground:
-                                raise TypeError("Model should not have Background objects with "
-                                                "fitBackground=False")
+                                raise TypeError(
+                                    "Model should not have Background objects with " "fitBackground=False"
+                                )
                             else:
                                 sources_bg.append(source_model)
                     model.sources = []
@@ -1080,16 +1314,19 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                             n_good += 1
                             exposurePsfs_input = []
                             for (exposure_p, psf_p), (exposure_c, psf_c) in zip(
-                                    exposurePsfs, exposurePsfs_cs[idx_c]):
+                                exposurePsfs, exposurePsfs_cs[idx_c]
+                            ):
                                 exposure_c.psf = exposure_p.psf
                                 exposurePsfs_input.append((exposure_c, psf_p))
 
                             for specs in modelSpecs:
-                                specs['values_init'] = values_init[specs['name']][idx_c]
+                                specs["values_init"] = values_init[specs["name"]][idx_c]
 
                             _, models = mpfFit.fit_galaxy(
-                                exposurePsfs_input, modelSpecs, fit_background=self.config.fitBackground,
-                                skip_fit=True
+                                exposurePsfs_input,
+                                modelSpecs,
+                                fit_background=self.config.fitBackground,
+                                skip_fit=True,
                             )
                             # Another double entendre; it never ends.
                             model_child = models[name_modeltype]
@@ -1102,8 +1339,8 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                                 params_all = model_child.get_parameters(free=True, fixed=True)
                                 params_free_i = []
                                 for param in params_all:
-                                    if param.name.startswith('cen'):
-                                        is_x = param.name[3] == 'x'
+                                    if param.name.startswith("cen"):
+                                        is_x = param.name[3] == "x"
                                         offset = offset_x if is_x else offset_y
                                         if offset != 0:
                                             param.limits.upper = bbox.width if is_x else bbox.height
@@ -1119,8 +1356,10 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                             for source_mpf in models[name_modeltype].sources:
                                 if isinstance(source_mpf.modelphotometric.components[-1], mpfObj.Background):
                                     if not self.config.fitBackground:
-                                        raise TypeError("Model should not have Background objects with "
-                                                        "fitBackground=False")
+                                        raise TypeError(
+                                            "Model should not have Background objects with "
+                                            "fitBackground=False"
+                                        )
                                 else:
                                     model.sources.append(source_mpf)
                         else:
@@ -1135,24 +1374,25 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                             if self.config.plot:
                                 model.evaluate(plot=True)
                         else:
-                            result_model, _ = mpfFit.fit_model(model, plot=self.config.plot,
-                                                               kwargs_fit=kwargs_fit)
+                            result_model, _ = mpfFit.fit_model(
+                                model, plot=self.config.plot, kwargs_fit=kwargs_fit
+                            )
                             self.__setExtraFields(fields["base_extra"][name_model], source, result_model)
 
                             for child, params_free_c in params_free.items():
                                 if params_free_c is not None:
                                     if len(params_free_c) != len(fields_base_model):
                                         raise RuntimeError(
-                                            f'len(params_free_c={params_free_c})={len(params_free_c)} != '
-                                            f'len(fields_base_model={fields_base_model})'
-                                            f'={len(fields_base_model)}'
+                                            f"len(params_free_c={params_free_c})={len(params_free_c)} != "
+                                            f"len(fields_base_model={fields_base_model})"
+                                            f"={len(fields_base_model)}"
                                         )
                                     for param, (name, key) in zip(params_free_c, fields_base_model):
                                         child[key] = param.get_value()
                     else:
                         result_model = None
                     results[name_model] = result_model
-                results = {'fits': {'galsim': results}}
+                results = {"fits": {"galsim": results}}
             if self.config.plot:
                 plt.show()
             return results, None, deblended
@@ -1165,7 +1405,7 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                     fig, axes = plt.subplots(1, n_exposures)
                     for idx, (band, exposure) in enumerate(exposures.items()):
                         axes[idx].imshow(exposure.image)
-                        axes[idx].set_title(f'{band} [{idx}/{n_exposures}]')
+                        axes[idx].set_title(f"{band} [{idx}/{n_exposures}]")
                 else:
                     plt.figure()
                     band, exposure = list(exposures.items())[0]
@@ -1198,18 +1438,31 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         if not resume:
             mapper = MultiProFitTask._getMapper(schema)
         keys_extra = {
-            'runtimeKey': {'name': f'{self.prefix}{self.keynames["runtimeKey"]}', 'dtype': np.float64,
-                           'doc': 'Source fit CPU runtime', 'unit': 's'},
-            'failFlagKey': {'name': f'{self.prefix}{self.keynames["failFlagKey"]}', 'dtype': 'Flag',
-                            'doc': 'MultiProFit general failure flag'},
+            "runtimeKey": {
+                "name": f'{self.prefix}{self.keynames["runtimeKey"]}',
+                "dtype": np.float64,
+                "doc": "Source fit CPU runtime",
+                "unit": "s",
+            },
+            "failFlagKey": {
+                "name": f'{self.prefix}{self.keynames["failFlagKey"]}',
+                "dtype": "Flag",
+                "doc": "MultiProFit general failure flag",
+            },
         }
         fields_attr = {}
         for name_attr, specs in keys_extra.items():
-            name_field = specs.get('name', f'{self.prefix}{name_attr}')
+            name_field = specs.get("name", f"{self.prefix}{name_attr}")
             self.__addExtraField(
-                fields_attr, schema if resume else mapper.editOutputSchema(),
-                prefix=None, name=name_field, doc=specs.get('doc', ''),
-                dtype=specs.get('dtype'), unit=specs.get('unit'), exists=resume)
+                fields_attr,
+                schema if resume else mapper.editOutputSchema(),
+                prefix=None,
+                name=name_field,
+                doc=specs.get("doc", ""),
+                dtype=specs.get("dtype"),
+                unit=specs.get("unit"),
+                exists=resume,
+            )
             setattr(self, name_attr, fields_attr[name_field])
         if not resume:
             schema = mapper.getOutputSchema()
@@ -1217,19 +1470,20 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         fields = {key: {} for key in ["base", "base_extra", "psf", "psf_extra", "measmodel"]}
         # Set up the fields for PSF fits, which are independent per filter
         for idxBand, band in enumerate(filters):
-            prefix = f'{self.prefix}{self.prefix_psf}{band}'
-            resultsPsf = results['psfs'][idxBand]['galsim']
+            prefix = f"{self.prefix}{self.prefix_psf}{band}"
+            resultsPsf = results["psfs"][idxBand]["galsim"]
             fields["psf"][band] = {}
             fields["psf_extra"][band] = defaultdictNested()
             for name, fit in resultsPsf.items():
-                fit = fit['fit']
+                fit = fit["fit"]
                 namesAdded = defaultdict(int)
                 keyList = []
-                for nameParam in fit['name_params']:
+                for nameParam in fit["name_params"]:
                     namesAdded[nameParam] += 1
                     fullname, doc, unit = self.__getParamFieldInfo(
                         f'{nameParam}{"Frac" if nameParam == "flux" else ""}',
-                        f'{prefix}_c{namesAdded[nameParam]}_')
+                        f"{prefix}_c{namesAdded[nameParam]}_",
+                    )
                     if resume:
                         key = schema.find(fullname).key
                     else:
@@ -1241,18 +1495,22 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         # Setup field names for source fits, which may have fluxes in multiple
         # bands if run in multi-band. Either way, flux parameters should
         # contain a band name.
-        for name, result in results['fits']['galsim'].items():
-            prefix = f'{self.prefix}{name}'
+        for name, result in results["fits"]["galsim"].items():
+            prefix = f"{self.prefix}{name}"
             fit = result.fits[0]
             namesAdded = defaultdict(int)
             keyList = []
-            bands = [f'{x.band}_' if hasattr(x, 'band') else '' for x, fixed in zip(
-                fit['params'], fit['params_allfixed']) if not fixed]
-            for nameParam, postfix in zip(fit['name_params'], bands):
-                nameParamFull = f'{nameParam}{postfix}'
+            bands = [
+                f"{x.band}_" if hasattr(x, "band") else ""
+                for x, fixed in zip(fit["params"], fit["params_allfixed"])
+                if not fixed
+            ]
+            for nameParam, postfix in zip(fit["name_params"], bands):
+                nameParamFull = f"{nameParam}{postfix}"
                 namesAdded[nameParamFull] += 1
                 fullname, doc, unit = self.__getParamFieldInfo(
-                    nameParam, f'{prefix}_c{namesAdded[nameParamFull]}_{postfix}')
+                    nameParam, f"{prefix}_c{namesAdded[nameParamFull]}_{postfix}"
+                )
                 if resume:
                     key = schema.find(fullname).key
                 else:
@@ -1264,9 +1522,14 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
 
         if self.config.computeMeasModelfitLikelihood:
             for name in self.meas_modelfit_models:
-                self.__addExtraField(fields["measmodel"], schema, f"{self.prefix}measmodel_loglike", name,
-                                     f'MultiProFit log-likelihood for meas_modelfit {name} model',
-                                     exists=resume)
+                self.__addExtraField(
+                    fields["measmodel"],
+                    schema,
+                    f"{self.prefix}measmodel_loglike",
+                    name,
+                    f"MultiProFit log-likelihood for meas_modelfit {name} model",
+                    exists=resume,
+                )
 
         return schema, mapper, fields
 
@@ -1284,13 +1547,13 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         name : `str`
             The standard MultiProFit parameter name.
         """
-        field_split = field.split('_')
+        field_split = field.split("_")
         final = field_split[-1]
-        if final.endswith('Flux') or final.endswith('Flux'):
-            return 'flux'
-        elif final == 'x' or final == 'y':
-            if (len(field_split) > 1) and (field_split[-2] == 'sigma'):
-                return f'sigma_{final}'
+        if final.endswith("Flux") or final.endswith("Flux"):
+            return "flux"
+        elif final == "x" or final == "y":
+            if (len(field_split) > 1) and (field_split[-2] == "sigma"):
+                return f"sigma_{final}"
         return final
 
     @staticmethod
@@ -1315,7 +1578,7 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
             The default unit of the parameter, if any; '' otherwise.
         """
         name_full = f'{prefix if prefix else ""}{"instFlux" if nameParam == "flux" else nameParam}'
-        doc, unit = MultiProFitTask.params_multiprofit.get(nameParam, ('', ''))
+        doc, unit = MultiProFitTask.params_multiprofit.get(nameParam, ("", ""))
         return name_full, doc, unit
 
     @staticmethod
@@ -1333,9 +1596,7 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
             The MultiProFit-specified default value.
         """
         return mpfFit.get_param_default(
-            MultiProFitTask.__getFieldParamName(name_param),
-            return_value=True,
-            is_value_transformed=True
+            MultiProFitTask.__getFieldParamName(name_param), return_value=True, is_value_transformed=True
         )
 
     @staticmethod
@@ -1357,13 +1618,13 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         """
         mask = afwImage.Mask(bbox)
         for idx, src in enumerate(sources):
-            if src['deblend_nChild'] > 0:
+            if src["deblend_nChild"] > 0:
                 spans = src.getFootprint().getSpans()
                 spans.setMask(mask, idx + 1)
         return mask
 
     def getNamePsfModel(self):
-        return f'gaussian:{self.config.gaussianOrderPsf}_pixelated'
+        return f"gaussian:{self.config.gaussianOrderPsf}_pixelated"
 
     @staticmethod
     def __setExtraField(extra, row, fit, name, nameFit=None, index=None):
@@ -1416,9 +1677,12 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         -----
         The return value is similar to that from __getCatalog.
         """
-        fields_mpf = {f'{pre}{post}': defaultdict(dict if is_extra else list) for pre in ('base', 'psf')
-                      for post, is_extra in (('', False), ('_extra', True))}
-        prefixes = (self.prefix, f'{self.prefix}{self.prefix_psf}')
+        fields_mpf = {
+            f"{pre}{post}": defaultdict(dict if is_extra else list)
+            for pre in ("base", "psf")
+            for post, is_extra in (("", False), ("_extra", True))
+        }
+        prefixes = (self.prefix, f"{self.prefix}{self.prefix_psf}")
         prefix_psf = prefixes[True]
         schema = catalog.schema
 
@@ -1427,30 +1691,31 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                 is_psf = name_field.startswith(prefix_psf)
                 prefix = prefixes[is_psf]
                 name_field = name_field.split(prefix, 1)[1]
-                key, name_field = name_field.split('_', 1)
-                suffix = name_field.split('_')[-1]
+                key, name_field = name_field.split("_", 1)
+                suffix = name_field.split("_")[-1]
                 type_field = "psf" if is_psf else "base"
                 is_extra = suffix in self.params_extra
                 if is_extra:
                     type_field = f"{type_field}_extra"
-                key_cat = schema.find(f'{prefix}{key}_{name_field}').key
+                key_cat = schema.find(f"{prefix}{key}_{name_field}").key
                 if is_extra:
                     fields_mpf[type_field][key][name_field] = key_cat
                 else:
                     fields_mpf[type_field][key].append((name_field, key_cat))
 
         if validate_psf:
-            fields_psf = ['c1_cenx', 'c1_ceny']
-            params_shape = ('sigma_x', 'sigma_y', 'rho')
+            fields_psf = ["c1_cenx", "c1_ceny"]
+            params_shape = ("sigma_x", "sigma_y", "rho")
             for idx_comp in range(1, 1 + self.config.gaussianOrderPsf):
                 if idx_comp != self.config.gaussianOrderPsf:
-                    fields_psf.append(f'c{idx_comp}_fluxFrac')
-                fields_psf.extend([f'c{idx_comp}_{name_param}' for name_param in params_shape])
+                    fields_psf.append(f"c{idx_comp}_fluxFrac")
+                fields_psf.extend([f"c{idx_comp}_{name_param}" for name_param in params_shape])
             for band, fields_found in fields_mpf["psf"].items():
                 fields_found_names = [field[0] for field in fields_found]
                 if fields_found_names != fields_psf:
-                    raise RuntimeError(f'PSF fields_found={fields_found_names} != expected fields_psf='
-                                       f'{fields_psf}')
+                    raise RuntimeError(
+                        f"PSF fields_found={fields_found_names} != expected fields_psf=" f"{fields_psf}"
+                    )
 
         name_psfmodel = self.getNamePsfModel()
         for band in fields_mpf["psf"].keys():
@@ -1459,7 +1724,7 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
 
         if add_keys:
             for name_attr, name_field in self.keynames.items():
-                setattr(self, name_attr, schema.find(f'{self.prefix}{name_field}').key)
+                setattr(self, name_attr, schema.find(f"{self.prefix}{name_field}").key)
 
         return fields_mpf
 
@@ -1480,13 +1745,13 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         None
         """
         if self.config.outputChisqred:
-            self.__setExtraField(extra, row, fit, 'chisqred')
+            self.__setExtraField(extra, row, fit, "chisqred")
         if self.config.outputLogLikelihood:
-            self.__setExtraField(extra, row, fit, 'loglike', nameFit='likelihood', index=0)
+            self.__setExtraField(extra, row, fit, "loglike", nameFit="likelihood", index=0)
         if self.config.outputRuntime:
-            self.__setExtraField(extra, row, fit, 'time')
-        self.__setExtraField(extra, row, fit, 'nEvalFunc', nameFit='n_eval_func')
-        self.__setExtraField(extra, row, fit, 'nEvalGrad', nameFit='n_eval_grad')
+            self.__setExtraField(extra, row, fit, "time")
+        self.__setExtraField(extra, row, fit, "nEvalFunc", nameFit="n_eval_func")
+        self.__setExtraField(extra, row, fit, "nEvalGrad", nameFit="n_eval_grad")
 
     def __setFieldsSource(self, results, fieldsBase, fieldsExtra, row):
         """Set fields for a source's fit parameters.
@@ -1509,22 +1774,23 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         -------
         None
         """
-        for idxfit, (name, result) in enumerate(results['fits']['galsim'].items()):
+        for idxfit, (name, result) in enumerate(results["fits"]["galsim"].items()):
             if result is not None:
                 fits = result.fits
                 if fits is not None and len(fits) > 0:
                     fit = fits[-1]
                     if isinstance(fit, tuple):
                         if not (len(fit) > 0):
-                            raise RuntimeError(f'Model={name} fit result tuple has len<1')
+                            raise RuntimeError(f"Model={name} fit result tuple has len<1")
                         elif not isinstance(fit[0], Exception):
-                            raise RuntimeError(f'Model={name} type(fit[0])={type(fit[0])} unrecognized')
+                            raise RuntimeError(f"Model={name} type(fit[0])={type(fit[0])} unrecognized")
                         else:
-                            raise FitFailedError(f'Model={name} fit failed: {fit[0]}')
+                            raise FitFailedError(f"Model={name} fit failed: {fit[0]}")
                     elif not isinstance(fit, dict):
-                        raise RuntimeError(f'Model={name} fit type(fit)={type(fit)} not recognized')
-                    values = [x for x, fixed in zip(fit['params_bestall'], fit['params_allfixed'])
-                              if not fixed]
+                        raise RuntimeError(f"Model={name} fit type(fit)={type(fit)} not recognized")
+                    values = [
+                        x for x, fixed in zip(fit["params_bestall"], fit["params_allfixed"]) if not fixed
+                    ]
                     for value, key in zip(values, fieldsBase[name]):
                         row[key] = value
                     self.__setExtraFields(fieldsExtra[name], row, fit)
@@ -1550,14 +1816,15 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         -------
         None
         """
-        results_psfs = results.get('psfs', None)
+        results_psfs = results.get("psfs", None)
         if results_psfs:
             for idxBand, band in enumerate(self.config.bands_fit):
-                resultsPsf = results_psfs[idxBand]['galsim']
+                resultsPsf = results_psfs[idxBand]["galsim"]
                 for name, fit in resultsPsf.items():
-                    fit = fit['fit']
-                    values = [x for x, fixed in zip(fit['params_bestall'], fit['params_allfixed'])
-                              if not fixed]
+                    fit = fit["fit"]
+                    values = [
+                        x for x, fixed in zip(fit["params_bestall"], fit["params_allfixed"]) if not fixed
+                    ]
                     for value, key in zip(values, fieldsBase[band][name]):
                         row[key[key_index] if key_index is not None else key] = value
                     self.__setExtraFields(fieldsExtra[band][name], row, fit)
@@ -1589,14 +1856,19 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         configMeasModelfit = CModelConfig()
         measmodels = {key: {} for key in self.meas_modelfit_models}
         for band, exposure in exposures.items():
-            _, measmodels['dev'][band], measmodels['exp'][band], measmodels['cmodel'][band] = \
-                buildCModelImages(exposure, source, configMeasModelfit)
+            (
+                _,
+                measmodels["dev"][band],
+                measmodels["exp"][band],
+                measmodels["cmodel"][band],
+            ) = buildCModelImages(exposure, source, configMeasModelfit)
         # Set the values of meas_modelfit model likelihood fields
         for measmodel_type, measmodel_images in measmodels.items():
             likelihood = 0
             for band, exposure in exposures.items():
                 likelihood += model.get_exposure_likelihood(
-                    model.data.exposures[band][0], measmodel_images[band].array)[0]
+                    model.data.exposures[band][0], measmodel_images[band].array
+                )[0]
             likelihood = {measmodel_type: likelihood}
             self.__setExtraField(fieldsMeasmodel, row, likelihood, measmodel_type)
 
@@ -1621,7 +1893,7 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         self.__setFieldsPsf(results, fields["psf"], fields["psf_extra"], row)
         self.__setFieldsSource(results, fields["base"], fields["base_extra"], row)
         if self.config.computeMeasModelfitLikelihood:
-            model = results['models'][self.modelSpecs[0].model]
+            model = results["models"][self.modelSpecs[0].model]
             self.__setFieldsMeasmodel(exposures, model, source, fields["measmodel"], row)
 
     def fit(
@@ -1672,14 +1944,22 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
             logging.basicConfig()
             logger = logging.getLogger(__name__)
             logger.level = logging.INFO
-        if (self.config.resume or self.config.deblendFromDeblendedFits) and \
-                not os.path.isfile(self.config.filenameOut):
-            raise FileNotFoundError(f"Can't resume or deblendFromDeblendedFits from non-existent file"
-                                    f"={self.config.filenameOut}")
-        if self.config.resume and self.config.deblendFromDeblendedFits and not os.path.isfile(
-                self.config.filenameOutDeblend):
-            raise FileNotFoundError(f"Can't resume deblendFromDeblendedFits from non-existent file"
-                                    f"={self.config.filenameOutDeblend}")
+        if (self.config.resume or self.config.deblendFromDeblendedFits) and not os.path.isfile(
+            self.config.filenameOut
+        ):
+            raise FileNotFoundError(
+                f"Can't resume or deblendFromDeblendedFits from non-existent file"
+                f"={self.config.filenameOut}"
+            )
+        if (
+            self.config.resume
+            and self.config.deblendFromDeblendedFits
+            and not os.path.isfile(self.config.filenameOutDeblend)
+        ):
+            raise FileNotFoundError(
+                f"Can't resume deblendFromDeblendedFits from non-existent file"
+                f"={self.config.filenameOutDeblend}"
+            )
         if self.config.plotOnly and not self.config.resume:
             raise ValueError("Can't set plotOnly=True without resume=True")
         data = {}
@@ -1689,12 +1969,14 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         for catexp in catexps:
             band = catexp.band
             if band in data:
-                raise ValueError(f'catexp band={band} already found; duplicates are not supported')
+                raise ValueError(f"catexp band={band} already found; duplicates are not supported")
             in_prior = band in data_prior
             in_fit = band in self.config.bands_fit
             if not (in_fit or in_prior):
-                raise ValueError(f'catexp band={band} not in self.config.bands_fit={self.config.bands_fit}'
-                                 f' or bands_read={self.config.get_bands_read()}')
+                raise ValueError(
+                    f"catexp band={band} not in self.config.bands_fit={self.config.bands_fit}"
+                    f" or bands_read={self.config.get_bands_read()}"
+                )
             if in_fit:
                 data[band] = catexp
             if in_prior:
@@ -1705,15 +1987,17 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
             if catexp is None:
                 raise RuntimeError(
                     f"self.config.priorMagBand={self.config.priorMagBand} not found in any catexp"
-                    f"; bands:{[catexp.band for catexp in catexps]}")
+                    f"; bands:{[catexp.band for catexp in catexps]}"
+                )
             mags_prior = catexp.exposure.getPhotoCalib().calibrateCatalog(catexp.catalog)[
-                self.config.priorMagField]
+                self.config.priorMagField
+            ]
         else:
             mags_prior = None
 
         bands = list(data.keys())
         if set(bands) != set(self.config.bands_fit):
-            raise RuntimeError(f'bands={bands} not identical to config.bands={self.config.bands_fit}')
+            raise RuntimeError(f"bands={bands} not identical to config.bands={self.config.bands_fit}")
         exposures = {}
         bbox_ref = None
         for band in self.config.bands_fit:
@@ -1724,43 +2008,57 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                 bbox_compare = exposure.image.getBBox()
                 if bbox_compare != bbox_ref:
                     raise ValueError(
-                        f"Non-matching bboxes: {band}={bbox_compare} != ref {bands[0]}:{bbox_ref}")
+                        f"Non-matching bboxes: {band}={bbox_compare} != ref {bands[0]}:{bbox_ref}"
+                    )
             exposures[band] = exposure
         self.bbox_ref = bbox_ref
 
-        filenameOut = (self.config.filenameOut if not self.config.deblendFromDeblendedFits else
-                       self.config.filenameOutDeblend)
+        filenameOut = (
+            self.config.filenameOut
+            if not self.config.deblendFromDeblendedFits
+            else self.config.filenameOutDeblend
+        )
 
         if self.config.pathCosmosGalsim:
             tiles = mrCutout.get_tiles_HST_COSMOS()
-            ra_corner, dec_corner = mrCutout.get_corners_exposure(next(iter(data.values()))['exposure'])
+            ra_corner, dec_corner = mrCutout.get_corners_exposure(next(iter(data.values()))["exposure"])
             extras = mrCutout.get_exposures_HST_COSMOS(
-                ra_corner, dec_corner, tiles, self.config.pathCosmosGalsim,
+                ra_corner,
+                dec_corner,
+                tiles,
+                self.config.pathCosmosGalsim,
             )
             # TODO: Generalize this for e.g. CANDELS
             bands = [extras[0].band]
         elif not self.config.deblendFromDeblendedFits:
             if self.config.disableNoiseReplacer:
                 extras = tuple(
-                    (datum.exposure, datum.catalog, {'idx_add': [None]*len(cat_ref)})
+                    (datum.exposure, datum.catalog, {"idx_add": [None] * len(cat_ref)})
                     for datum in data.values()
                 )
                 for exposure_extra, sources_extra, meta_extra in extras:
-                    idx_add = meta_extra['idx_add']
+                    idx_add = meta_extra["idx_add"]
                     for idx_extra, source_extra in enumerate(sources_extra):
-                        parent_extra = cat_ref[idx_extra]['parent']
+                        parent_extra = cat_ref[idx_extra]["parent"]
                         has_parent = parent_extra > 0
                         is_blended = (cat_ref.find(parent_extra) if has_parent else source_extra)[
-                            'deblend_nChild'] >= 1
+                            "deblend_nChild"
+                        ] >= 1
                         # Add parents back in when fitting, except if they have
                         # only one child. Parents with one child don't need to
                         # be subtracted or added back in since they're not
                         # blended
-                        idx_add[idx_extra] = [] if not is_blended else (
-                            [idx_extra] if has_parent else [
-                                int(idx_child) for idx_child in np.where(
-                                    cat_ref['parent'] == source_extra['id'])[0]
-                            ]
+                        idx_add[idx_extra] = (
+                            []
+                            if not is_blended
+                            else (
+                                [idx_extra]
+                                if has_parent
+                                else [
+                                    int(idx_child)
+                                    for idx_child in np.where(cat_ref["parent"] == source_extra["id"])[0]
+                                ]
+                            )
                         )
                         if has_parent and is_blended:
                             img_deblend, bbox_src = get_spanned_image(source_extra.getFootprint())
@@ -1778,7 +2076,8 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                 for datum in data.values():
                     extras.append(
                         MultiProFitTask._getSegmentationMap(
-                            datum.exposure.getBBox(), datum.catalog,
+                            datum.exposure.getBBox(),
+                            datum.catalog,
                         )
                     )
             else:
@@ -1798,25 +2097,32 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
 
         if self.config.fitGaussian:
             if len(self.config.bands_fit) > 1:
-                raise ValueError(f'Cannot fit Gaussian (no PSF) model with multiple filters ({bands})')
-            self.models['gausspx_no_psf_1'] = mpfFit.get_model(
-                {band: 1 for band in bands}, "gaussian:1", (1, 1), slopes=[0.5], engine='galsim',
-                engineopts={'use_fast_gauss': True, 'drawmethod': mpfObj.draw_method_pixel['galsim']},
-                name_model='gausspx_no_psf_1'
+                raise ValueError(f"Cannot fit Gaussian (no PSF) model with multiple filters ({bands})")
+            self.models["gausspx_no_psf_1"] = mpfFit.get_model(
+                {band: 1 for band in bands},
+                "gaussian:1",
+                (1, 1),
+                slopes=[0.5],
+                engine="galsim",
+                engineopts={"use_fast_gauss": True, "drawmethod": mpfObj.draw_method_pixel["galsim"]},
+                name_model="gausspx_no_psf_1",
             )
 
-        flags_failure = ['base_PixelFlags_flag_saturatedCenter', 'deblend_skipped']
+        flags_failure = ["base_PixelFlags_flag_saturatedCenter", "deblend_skipped"]
 
         if self.config.skipDeblendTooManyPeaks:
-            flags_failure.append('deblend_tooManyPeaks')
+            flags_failure.append("deblend_tooManyPeaks")
         backgroundPriorMultiplier = self.config.backgroundPriorMultiplier
         backgroundPriors = {}
 
         if backgroundPriorMultiplier > 0 and np.isfinite(backgroundPriorMultiplier):
             for band in bands:
                 backgroundPriors[band] = None
-        catalog_in = afwTable.SourceCatalog.readFits(self.config.filenameOut) if (
-            self.config.resume or self.config.deblendFromDeblendedFits) else cat_ref
+        catalog_in = (
+            afwTable.SourceCatalog.readFits(self.config.filenameOut)
+            if (self.config.resume or self.config.deblendFromDeblendedFits)
+            else cat_ref
+        )
 
         init_from_cat = self.config.plotOnly or self.config.deblendFromDeblendedFits
         if init_from_cat:
@@ -1827,69 +2133,79 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
         catalog = catalog_in if self.config.deblendFromDeblendedFits else None
 
         kwargs_moments = {
-            'sigma_min': np.max((1e-2, self.config.psfHwhmShrink)),
-            'denoise': self.config.estimateContiguousDenoisedMoments,
-            'contiguous': self.config.estimateContiguousDenoisedMoments,
+            "sigma_min": np.max((1e-2, self.config.psfHwhmShrink)),
+            "denoise": self.config.estimateContiguousDenoisedMoments,
+            "contiguous": self.config.estimateContiguousDenoisedMoments,
         }
 
         if not init_from_cat:
             catalog = afwTable.SourceCatalog(self.schema)
             catalog.extend(catalog_in, mapper=self.mapper)
         if catalog.schema != self.schema:
-            raise RuntimeError(f'catalog.schema={catalog.schema} != self.schema={self.schema} from init')
+            raise RuntimeError(f"catalog.schema={catalog.schema} != self.schema={self.schema} from init")
 
         deblend = self.config.deblend or self.config.deblendFromDeblendedFits
 
         for idx in range(np.max([idx_begin, 0]), idx_end):
             src = cat_ref[idx]
             results = None
-            id_parent = src['parent']
-            n_child = src['deblend_nChild']
+            id_parent = src["parent"]
+            n_child = src["deblend_nChild"]
             is_parent = n_child > 0
             runtime = 0
             deblended = False
             skipped, succeeded = False, False
             if self.config.deblendFromDeblendedFits and not is_parent:
                 skipped = True
-                error = 'deblendFromDeblendedFits and not is_parent'
+                error = "deblendFromDeblendedFits and not is_parent"
             else:
                 flags_failed = {flag: src[flag] for flag in flags_failure}
                 skipped = any(flags_failed.values())
                 if skipped:
-                    error = f'{[key for key, fail in flags_failed.items() if fail]} flag(s) set'
+                    error = f"{[key for key, fail in flags_failed.items() if fail]} flag(s) set"
             if not skipped:
                 errors = []
                 is_child = id_parent != 0
-                id_src = src['id']
+                id_src = src["id"]
                 # Scarlet/meas_extensions_scarlet has isolated children;
                 # meas_deblender does not
-                isolated = (cat_ref.find(id_parent)['deblend_nChild'] == 1) if is_child else not is_parent
+                isolated = (cat_ref.find(id_parent)["deblend_nChild"] == 1) if is_child else not is_parent
 
                 if self.config.isolatedOnly and not isolated:
-                    errors.append('not isolated')
+                    errors.append("not isolated")
                 if not self.config.deblendFromDeblendedFits and (
-                        is_parent and n_child > self.config.maxNChildParentFit):
-                    errors.append(f'is_parent and n_child={n_child} > max={self.config.maxNChildParentFit}')
+                    is_parent and n_child > self.config.maxNChildParentFit
+                ):
+                    errors.append(f"is_parent and n_child={n_child} > max={self.config.maxNChildParentFit}")
                 if errors:
-                    error = ' & '.join(errors)
+                    error = " & ".join(errors)
                 else:
                     if not is_parent or not deblend:
                         children_cat, children_src = (None, None)
                     else:
-                        children_idx = [int(x) for x in np.where(cat_ref['parent'] == id_src)[0]]
+                        children_idx = [int(x) for x in np.where(cat_ref["parent"] == id_src)[0]]
                         children_cat, children_src = (
-                            [catalog[x] for x in children_idx], [cat_ref[x] for x in children_idx]
+                            [catalog[x] for x in children_idx],
+                            [cat_ref[x] for x in children_idx],
                         )
-                    footprint = cat_ref.find(id_parent).getFootprint() if (
-                        self.config.useParentFootprint and is_child) else None
+                    footprint = (
+                        cat_ref.find(id_parent).getFootprint()
+                        if (self.config.useParentFootprint and is_child)
+                        else None
+                    )
 
                     for band in backgroundPriors:
                         if self.config.usePriorBackgroundLocalEstimate:
-                            cat_band = data[band]['sources']
-                            bg_mean = 0. if cat_band[f'{self.config.field_localbg}_flag'] else \
-                                cat_band[f'{self.config.field_localbg}_instFlux']
-                            bg_sigma = self.config.backgroundPriorMultiplier * \
-                                cat_band[f'{self.config.field_localbg}_instFluxErr']
+                            cat_band = data[band]["sources"]
+                            bg_mean = (
+                                0.0
+                                if cat_band[f"{self.config.field_localbg}_flag"]
+                                else cat_band[f"{self.config.field_localbg}_instFlux"]
+                            )
+                            bg_sigma = (
+                                self.config.backgroundPriorMultiplier
+                                * cat_band[f"{self.config.field_localbg}_instFluxErr"]
+                            )
                         else:
                             bg_mean, bg_sigma = 0, None
                         backgroundPriors[band] = (bg_mean, bg_sigma)
@@ -1898,19 +2214,23 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                         values_init_psf = {}
                         row_in = catalog_in[idx]
                         name_psfmodel = self.getNamePsfModel()
-                        for band, fields_band in fields['psf'].items():
+                        for band, fields_band in fields["psf"].items():
                             values_init_psf[band] = [
                                 (name_field, row_in[key]) for name_field, key in fields_band[name_psfmodel]
                             ]
                         for modelspec in self.modelSpecs:
                             modelspec.values_init = [
                                 (name_field, row_in[key])
-                                for name_field, key in fields['base'][modelspec['name']]
+                                for name_field, key in fields["base"][modelspec["name"]]
                             ]
                             modelspec.values_init_psf = values_init_psf
                     results, error, deblended = self.__fitSource(
-                        src, exposures, extras, children_cat=children_cat,
-                        footprint=footprint, failOnLargeFootprint=is_parent,
+                        src,
+                        exposures,
+                        extras,
+                        children_cat=children_cat,
+                        footprint=footprint,
+                        failOnLargeFootprint=is_parent,
                         row=catalog[idx] if self.config.deblendFromDeblendedFits else None,
                         usePriorShapeDefault=self.config.usePriorShapeDefault,
                         priorCentroidSigma=self.config.priorCentroidSigma,
@@ -1918,12 +2238,16 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                         mag_prior=mags_prior[idx] if mags_prior is not None else None,
                         backgroundPriors=backgroundPriors,
                         children_src=children_src,
-                        results=results, fields=fields, idx_src=idx,
+                        results=results,
+                        fields=fields,
+                        idx_src=idx,
                         logger=None if logger_is_none else logger,
-                        **kwargs)
+                        **kwargs,
+                    )
                     succeeded = error is None
-                    runtime = (self.metadata["__fitSourceEndCpuTime"]
-                               - self.metadata["__fitSourceStartCpuTime"])
+                    runtime = (
+                        self.metadata["__fitSourceEndCpuTime"] - self.metadata["__fitSourceStartCpuTime"]
+                    )
             # Preserve the first successful result to return at the end
             if resultsReturn is None and succeeded:
                 resultsReturn = results
@@ -1947,13 +2271,13 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
                     # This isn't actually necessary as long as the exposures
                     # are float64 copies, as they are now
                     for exposure_extra, _, meta_extra in extras if False else []:
-                        img_added, bbox_added = meta_extra['img_bbox']
+                        img_added, bbox_added = meta_extra["img_bbox"]
                         if img_added is not None:
                             exposure_extra.image.subset(bbox_added).array -= img_added
                 else:
                     for noiseReplacer in extras:
                         noiseReplacer.removeSource(id_src)
-            errorMsg = '' if succeeded else f" {'skipped' if skipped else 'failed'}: {error}"
+            errorMsg = "" if succeeded else f" {'skipped' if skipped else 'failed'}: {error}"
             # Log with a priority just above info, since MultiProFit itself
             # will generate a lot of info logs per source.
             nFit += 1
@@ -1969,8 +2293,11 @@ class MultiProFitTask(fitMb.MultibandFitSubTask):
             if toWrite:
                 catalog.writeFits(filenameOut)
             # Return the exposures to their original state
-            if (not self.config.fitHstCosmos and not self.config.deblendFromDeblendedFits
-                    and not self.config.disableNoiseReplacer):
+            if (
+                not self.config.fitHstCosmos
+                and not self.config.deblendFromDeblendedFits
+                and not self.config.disableNoiseReplacer
+            ):
                 for noiseReplacer in extras:
                     noiseReplacer.end()
         return catalog, resultsReturn
