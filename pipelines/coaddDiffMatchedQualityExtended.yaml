@@ -24,13 +24,13 @@ tasks:
 
       atools.matchedRefMagDiff: MatchedRefCoaddDiffMagTool
       atools.matchedRefMagDiff.fluxes_default.cmodel_err: model_err
-      atools.matchedRefMagDiff.produce.xLims: lims_mag_x
-      atools.matchedRefMagDiff.produce.yLims: lims_mag_diff
+      atools.matchedRefMagDiff.produce.plot.xLims: lims_mag_x
+      atools.matchedRefMagDiff.produce.plot.yLims: lims_mag_diff
 
       atools.matchedRefMagChi: MatchedRefCoaddDiffMagTool
       atools.matchedRefMagChi.fluxes_default.cmodel_err: model_err
-      atools.matchedRefMagChi.produce.xLims: lims_mag_x
-      atools.matchedRefMagChi.produce.yLims: lims_mag_chi
+      atools.matchedRefMagChi.produce.plot.xLims: lims_mag_x
+      atools.matchedRefMagChi.produce.plot.yLims: lims_mag_chi
       atools.matchedRefMagChi.compute_chi: true
 
       atools.matchedRefPositionRaDiff: MatchedRefCoaddDiffPositionTool
