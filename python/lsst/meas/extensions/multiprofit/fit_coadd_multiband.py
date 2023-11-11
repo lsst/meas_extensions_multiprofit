@@ -36,7 +36,7 @@ import lsst.pipe.tasks.fit_coadd_multiband as fitMB
 import lsst.utils.timer as utilsTimer
 
 from lsst.multiprofit.config import set_config_from_dict
-from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig
+from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig, PsfRebuildFitFlagError
 from lsst.multiprofit.fit_source import (
     CatalogExposureSourcesABC,
     CatalogSourceFitterABC,
@@ -128,7 +128,10 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
 
     def setDefaults(self):
         super().setDefaults()
-        self.flag_errors = {"not_primary_flag": "NotPrimaryError"}
+        self.flag_errors = {
+            "not_primary_flag": "NotPrimaryError",
+            "psf_fit_flag": "PsfRebuildFitFlagError",
+        }
 
 
 class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTask):
@@ -151,6 +154,8 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
         if NotPrimaryError not in errors_expected:
             errors_expected[NotPrimaryError] = "not_primary_flag"
+        if PsfRebuildFitFlagError not in errors_expected:
+            errors_expected[PsfRebuildFitFlagError] = "psf_fit_flag"
         CatalogSourceFitterABC.__init__(self, errors_expected=errors_expected)
         fitMB.CoaddMultibandFitSubTask.__init__(self, **kwargs)
 
