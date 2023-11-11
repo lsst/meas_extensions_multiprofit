@@ -36,7 +36,7 @@ tasks:
       atools.matchedRefPositionRaDiff: MatchedRefCoaddDiffPositionTool
       atools.matchedRefPositionRaDiff.fluxes_default.cmodel_err: model_err
       atools.matchedRefPositionRaDiff.coord_label: R.A.
-      atools.matchedRefPositionRaDiff.coord_meas: mpf_psexpdev_cen_ra
+      atools.matchedRefPositionRaDiff.coord_meas: coord_ra
       atools.matchedRefPositionRaDiff.coord_ref: refcat_ra
       atools.matchedRefPositionRaDiff.scale_factor: 3600000
       atools.matchedRefPositionRaDiff.produce.plot.xLims: lims_mag_x
@@ -45,7 +45,7 @@ tasks:
       atools.matchedRefPositionDecDiff: MatchedRefCoaddDiffPositionTool
       atools.matchedRefPositionDecDiff.fluxes_default.cmodel_err: model_err
       atools.matchedRefPositionDecDiff.coord_label: Dec.
-      atools.matchedRefPositionDecDiff.coord_meas: mpf_psexpdev_cen_dec
+      atools.matchedRefPositionDecDiff.coord_meas: coord_dec
       atools.matchedRefPositionDecDiff.coord_ref: refcat_dec
       atools.matchedRefPositionDecDiff.scale_factor: 3600000
       atools.matchedRefPositionDecDiff.produce.plot.xLims: lims_mag_x
@@ -63,6 +63,8 @@ tasks:
           key_flux = f"mpf_{parameters.name_model}_{{band}}_flux",
           key_flux_error = "{key_flux}_err"
         )
+        coord_ra = f"mpf_{parameters.name_model}_cen_ra"
+        coord_dec = f"mpf_{parameters.name_model}_cen_dec"
         lims_mag_x = (parameters.mag_x_min, parameters.mag_x_max)
         lims_mag_chi = (parameters.mag_chi_min, parameters.mag_chi_max)
         lims_mag_diff = (parameters.mag_diff_min, parameters.mag_diff_max)
