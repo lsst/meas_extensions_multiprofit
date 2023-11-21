@@ -35,12 +35,14 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_multiband as fitMB
 import lsst.utils.timer as utilsTimer
 
-from multiprofit.config import set_config_from_dict
-from multiprofit.fit_psf import CatalogPsfFitterConfig
-from multiprofit.fit_source import (
-    CatalogExposureSourcesABC, CatalogSourceFitterABC, CatalogSourceFitterConfig,
+from lsst.multiprofit.config import set_config_from_dict
+from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig, PsfRebuildFitFlagError
+from lsst.multiprofit.fit_source import (
+    CatalogExposureSourcesABC,
+    CatalogSourceFitterABC,
+    CatalogSourceFitterConfig,
 )
-from multiprofit.utils import get_params_uniq
+from lsst.multiprofit.utils import get_params_uniq
 
 from typing import Type
 
@@ -48,13 +50,13 @@ from .utils import get_spanned_image
 
 
 class NotPrimaryError(RuntimeError):
-    pass
+    """RuntimeError for sources that are not primary and shouldn't be fit"""
 
 
 @dataclass(frozen=True, kw_only=True, config=fitMB.CatalogExposureConfig)
 class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC):
-    """ Input data from lsst pipelines, parsed for MultiProFit.
-    """
+    """Input data from lsst pipelines, parsed for MultiProFit"""
+
     channel: g2f.Channel = pydantic.Field(title="Channel for the image's band")
     config_fit: CatalogSourceFitterConfig = pydantic.Field(title="Channel for the image's band")
 
@@ -65,8 +67,8 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         return self.config_fit_psf.rebuild_psfmodel(self.table_psf_fits[match])
 
     def get_source_observation(self, source) -> g2f.Observation:
-        if (not source['detect_isPrimary']) or source['merge_peak_sky']:
-            raise NotPrimaryError(f'source {source[self.config_fit.column_id]} has invalid flags for fit')
+        if (not source["detect_isPrimary"]) or source["merge_peak_sky"]:
+            raise NotPrimaryError(f"source {source[self.config_fit.column_id]} has invalid flags for fit")
         footprint = source.getFootprint()
         bbox = footprint.getBBox()
         bitmask = 0
@@ -76,14 +78,21 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
             bitval = mask.getPlaneBitMask(bitname)
             bitmask |= bitval
         mask = ((mask.array & bitmask) != 0) & (spans != 0)
-        mask = ~ mask
+        mask = ~mask
         img, _, sigma_inv = get_spanned_image(
-            exposure=self.exposure, bbox=bbox, spans=spans, get_sig_inv=True,
+            exposure=self.exposure,
+            bbox=bbox,
+            spans=spans,
+            get_sig_inv=True,
         )
         sigma_inv[~mask] = 0
 
-        obs = g2f.Observation(image=g2.ImageD(img), sigma_inv=g2.ImageD(sigma_inv),
-                              mask_inv=g2.ImageB(mask), channel=self.channel)
+        obs = g2f.Observation(
+            image=g2.ImageD(img),
+            sigma_inv=g2.ImageD(sigma_inv),
+            mask_inv=g2.ImageB(mask),
+            channel=self.channel,
+        )
         return obs
 
     def __post_init__(self):
@@ -93,17 +102,23 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         # ... but pydantic dataclasses do not seem to, and also don't pass self
         super().__post_init__()
         config = CatalogPsfFitterConfig()
-        set_config_from_dict(config, self.table_psf_fits.meta['config'])
-        object.__setattr__(self, 'config_fit_psf', config)
+        set_config_from_dict(config, self.table_psf_fits.meta["config"])
+        object.__setattr__(self, "config_fit_psf", config)
 
 
 class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFitSubConfig):
     """Configuration for the MultiProFit profile fitter."""
-    bands_fit = pexConfig.ListField(dtype=str, default=[], doc="list of bandpass filters to fit",
-                                    listCheck=lambda x: len(set(x)) == len(x))
+
+    bands_fit = pexConfig.ListField(
+        dtype=str,
+        default=[],
+        doc="list of bandpass filters to fit",
+        listCheck=lambda x: len(set(x)) == len(x),
+    )
     fit_linear = pexConfig.Field[bool](default=True, doc="Fit linear parameters to initialize")
-    mask_names_zero = pexConfig.ListField[str](default=['BAD', 'EDGE', 'SAT', 'NO_DATA'],
-                                               doc="Mask bits to mask out")
+    mask_names_zero = pexConfig.ListField[str](
+        default=["BAD", "EDGE", "SAT", "NO_DATA"], doc="Mask bits to mask out"
+    )
     prefix_column = pexConfig.Field[str](default="mpf_", doc="Column name prefix")
 
     def bands_read_only(self) -> set[str]:
@@ -113,7 +128,10 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
 
     def setDefaults(self):
         super().setDefaults()
-        self.flag_errors = {"not_primary_flag": "NotPrimaryError"}
+        self.flag_errors = {
+            "not_primary_flag": "NotPrimaryError",
+            "psf_fit_flag": "PsfRebuildFitFlagError",
+        }
 
 
 class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTask):
@@ -128,13 +146,16 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
     -----
     See https://github.com/lsst-dm/multiprofit for more MultiProFit info.
     """
+
     ConfigClass = MultiProFitSourceConfig
     _DefaultName = "multiProFitSource"
 
     def __init__(self, **kwargs):
-        errors_expected = {} if 'errors_expected' not in kwargs else kwargs.pop('errors_expected')
+        errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
         if NotPrimaryError not in errors_expected:
-            errors_expected[NotPrimaryError] = 'not_primary_flag'
+            errors_expected[NotPrimaryError] = "not_primary_flag"
+        if PsfRebuildFitFlagError not in errors_expected:
+            errors_expected[PsfRebuildFitFlagError] = "psf_fit_flag"
         CatalogSourceFitterABC.__init__(self, errors_expected=errors_expected)
         fitMB.CoaddMultibandFitSubTask.__init__(self, **kwargs)
 
@@ -164,12 +185,12 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
             if (limits := limits_init.get(type_param)) is not None:
                 value = value if value is not None else param.value
                 if not limits.check(value):
-                    param.value = (limits.max + limits.min)/2.
+                    param.value = (limits.max + limits.min) / 2.0
                 param.limits = limits
 
     def get_model_cens(self, source: Mapping[str, Any]):
         cenx_img, ceny_img = self.catexps[0].exposure.wcs.skyToPixel(
-            geom.SpherePoint(source['coord_ra'], source['coord_dec'])
+            geom.SpherePoint(source["coord_ra"], source["coord_dec"])
         )
         bbox = source.getFootprint().getBBox()
         begin_x, begin_y = bbox.beginX, bbox.beginY
@@ -187,21 +208,22 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         ra, dec = self.catexps[0].exposure.wcs.pixelToSky(cen_x_img, cen_y_img)
         return ra.asDegrees(), dec.asDegrees()
 
-    def initialize_model(self, model: g2f.Model, source: Mapping[str, Any],
-                         limits_x: g2f.LimitsD, limits_y: g2f.LimitsD):
+    def initialize_model(
+        self, model: g2f.Model, source: Mapping[str, Any], limits_x: g2f.LimitsD, limits_y: g2f.LimitsD
+    ):
         comps = model.sources[0].components
-        sig_x = math.sqrt(source['base_SdssShape_xx'])
-        sig_y = math.sqrt(source['base_SdssShape_yy'])
+        sig_x = math.sqrt(source["base_SdssShape_xx"])
+        sig_y = math.sqrt(source["base_SdssShape_yy"])
         # There is a sign convention difference
-        rho = np.clip(-source['base_SdssShape_xy']/(sig_x*sig_y), -0.5, 0.5)
+        rho = np.clip(-source["base_SdssShape_xy"] / (sig_x * sig_y), -0.5, 0.5)
         if not np.isfinite(rho):
             sig_x, sig_y, rho = 0.5, 0.5, 0
-        if not source['base_SdssShape_flag']:
-            flux = source['base_SdssShape_instFlux']
+        if not source["base_SdssShape_flag"]:
+            flux = source["base_SdssShape_instFlux"]
         else:
-            flux = source['base_GaussianFlux_instFlux']
+            flux = source["base_GaussianFlux_instFlux"]
             if not (flux > 0):
-                flux = source['base_PsfFlux_instFlux']
+                flux = source["base_PsfFlux_instFlux"]
                 if not (flux > 0):
                     flux = 1
         n_psfs = self.config.n_pointsources
@@ -215,9 +237,9 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
             cenx, ceny = self.get_model_cens(source)
         # TODO: determine which exceptions can occur above
         except Exception:
-            cenx = observation.image.n_cols/2.
-            ceny = observation.image.n_rows/2.
-        flux = flux/(n_psfs + n_extended)
+            cenx = observation.image.n_cols / 2.0
+            ceny = observation.image.n_rows / 2.0
+        flux = flux / (n_psfs + n_extended)
         values_init = {
             g2f.IntegralParameterD: flux,
             g2f.CentroidXParameterD: cenx,
@@ -232,12 +254,12 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         params_psf_init = (g2f.IntegralParameterD, g2f.CentroidXParameterD, g2f.CentroidYParameterD)
         values_init_psf = {key: values_init[key] for key in params_psf_init}
         size_major = g2.EllipseMajor(g2.Ellipse(sigma_x=sig_x, sigma_y=sig_y, rho=rho)).r_major
-        # An R_eff larger than the box size is problematic
-        # Also should stop unreasonable size proposals; log10 transform isn't enough
+        # An R_eff larger than the box size is problematic. This should also
+        # stop unreasonable size proposals; a log10 transform isn't enough.
         # TODO: Try logit for r_eff?
         flux_max = 5 * max([np.sum(np.abs(datum.image.data)) for datum in model.data])
         flux_min = 1 / flux_max
-        limits_flux = g2f.LimitsD(flux_min, flux_max, 'unreliable flux limits')
+        limits_flux = g2f.LimitsD(flux_min, flux_max, "unreliable flux limits")
 
         limits_init = {
             g2f.IntegralParameterD: limits_flux,
@@ -283,23 +305,18 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
             A table with fit parameters for the PSF model at the location
             of each source.
         """
-
-        catexps_conv = [None]*len(catexps)
+        catexps_conv = [None] * len(catexps)
         for idx, catexp in enumerate(catexps):
             if isinstance(catexp, CatalogExposurePsfs):
                 catexps_conv[idx] = catexp
             else:
                 catexps_conv[idx] = CatalogExposurePsfs(
-                    # dataclasses.asdict(catexp)_ makes a recursive deep copy and must be avoided
+                    # dataclasses.asdict(catexp)_makes a recursive deep copy.
+                    # That must be avoided.
                     **{key: getattr(catexp, key) for key in catexp.__dataclass_fields__.keys()},
                     channel=g2f.Channel.get(catexp.band),
                     config_fit=self.config,
                 )
         self.catexps = catexps
-        catalog = self.fit(
-            catalog_multi=catalog_multi,
-            catexps=catexps_conv,
-            config=self.config,
-            **kwargs
-        )
+        catalog = self.fit(catalog_multi=catalog_multi, catexps=catexps_conv, config=self.config, **kwargs)
         return pipeBase.Struct(output=astropy_to_arrow(catalog))

@@ -28,7 +28,7 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
 import lsst.utils.timer as utilsTimer
 
-from multiprofit.fit_psf import CatalogExposurePsfABC, CatalogPsfFitter, CatalogPsfFitterConfig
+from lsst.multiprofit.fit_psf import CatalogExposurePsfABC, CatalogPsfFitter, CatalogPsfFitterConfig
 
 
 @dataclass(frozen=True, kw_only=True, config=fitCP.CatalogExposureConfig)
@@ -38,6 +38,7 @@ class CatalogExposure(fitCP.CatalogExposurePsf, CatalogExposurePsfABC):
 
 class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
     """Configuration for the MultiProFit Gaussian mixture PSF fitter."""
+
     fit_linear = pexConfig.Field[bool](default=True, doc="Fit linear parameters to initialize")
     prefix_column = pexConfig.Field[str](default="mpf_psf_", doc="Column name prefix")
 
@@ -57,11 +58,12 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
     -----
     See https://github.com/lsst-dm/multiprofit for more MultiProFit info.
     """
+
     ConfigClass = MultiProFitPsfConfig
     _DefaultName = "multiProFitPsf"
 
     def __init__(self, **kwargs):
-        errors_expected = {} if 'errors_expected' not in kwargs else kwargs.pop('errors_expected')
+        errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
         if InvalidParameterError not in errors_expected:
             # Cannot compute CoaddPsf at point (x, y)
             errors_expected[InvalidParameterError] = "no_inputs_flag"

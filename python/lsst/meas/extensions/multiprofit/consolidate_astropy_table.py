@@ -30,27 +30,35 @@ import numpy as np
 
 
 class CatalogAction(ConfigurableAction):
+    """Configurable action to return a catalog."""
+
     def __call__(self, data, **kwargs):
         return data
 
 
 class MergeMultibandFluxes(CatalogAction):
+    """Configurable action to merge single-band flux tables into one."""
+
     name_model = pexConfig.Field[str](doc="The name of the model that fluxes are measured from", default="")
 
     def __call__(self, data, **kwargs):
         datasetType = kwargs.get("datasetType")
         prefix_model = self.name_model + ("_" if self.name_model else "")
-        if self.name_model and hasattr(data, "meta") and datasetType and (
-                config := data.meta.get(datasetType)):
-            prefix = config.get('config', {}).get("prefix_column", "")
+        if (
+            self.name_model
+            and hasattr(data, "meta")
+            and datasetType
+            and (config := data.meta.get(datasetType))
+        ):
+            prefix = config.get("config", {}).get("prefix_column", "")
         else:
             prefix = ""
         columns_rest = []
         columns_flux_band = defaultdict(list)
         for column in data.columns:
             if not prefix or column.startswith(prefix):
-                if column.endswith('_flux'):
-                    band = column.split('_')[-2]
+                if column.endswith("_flux"):
+                    band = column.split("_")[-2]
                     columns_flux_band[band].append(column)
             else:
                 columns_rest.append(column)
@@ -60,18 +68,17 @@ class MergeMultibandFluxes(CatalogAction):
             flux = np.nansum([data[column] for column in columns_band], axis=0)
             data[column_flux] = flux
 
-            columns_band_err = [f'{column}_err' for column in columns_band]
-            errors = [data[column]**2 for column in columns_band_err if column in data.columns]
+            columns_band_err = [f"{column}_err" for column in columns_band]
+            errors = [data[column] ** 2 for column in columns_band_err if column in data.columns]
             if errors:
                 flux_err = np.sqrt(np.nansum(errors, axis=0))
                 flux_err[flux_err == 0] = np.nan
-                column_flux_err = f'{column_flux}_err'
+                column_flux_err = f"{column_flux}_err"
                 data[column_flux_err] = flux_err
 
         if prefix_model:
             colnames = [
-                col if (col in columns_rest)
-                else f"{prefix}{prefix_model}{col.split(prefix, 1)[1]}"
+                col if (col in columns_rest) else f"{prefix}{prefix_model}{col.split(prefix, 1)[1]}"
                 for col in data.columns
             ]
             if hasattr(data, "rename_columns"):
@@ -83,13 +90,16 @@ class MergeMultibandFluxes(CatalogAction):
 
 
 class InputConfig(pexConfig.Config):
+    """Config for inputs to ConsolidateAstropyTableTask"""
+
     doc = pexConfig.Field[str](doc="Doc for connection", optional=False)
     action = ConfigurableActionField[CatalogAction](
         doc="Action to modify the input table",
         default=None,
     )
-    columns = pexConfig.ListField[str](doc="Column names to copy; default of None copies all",
-                                       optional=True, default=None)
+    columns = pexConfig.ListField[str](
+        doc="Column names to copy; default of None copies all", optional=True, default=None
+    )
     column_id = pexConfig.Field[str](doc="ID column to merge", optional=False, default="objectId")
     is_multiband = pexConfig.Field[bool](doc="Whether the dataset is multiband or not", default=False)
     is_multipatch = pexConfig.Field[bool](doc="Whether the dataset is multipatch or not", default=False)
@@ -97,6 +107,8 @@ class InputConfig(pexConfig.Config):
 
 
 class ConsolidateAstropyTableConfigBase(pexConfig.Config):
+    """Config for ConsolidateAstropyTableTask"""
+
     inputs = pexConfig.ConfigDictField(
         doc="Mapping of input dataset type config by name",
         keytype=str,
@@ -105,8 +117,9 @@ class ConsolidateAstropyTableConfigBase(pexConfig.Config):
     )
 
 
-class ConsolidateAstropyTableConnections(pipeBase.PipelineTaskConnections,
-                                         dimensions=("tract", "skymap")):
+class ConsolidateAstropyTableConnections(pipeBase.PipelineTaskConnections, dimensions=("tract", "skymap")):
+    """Connections for ConsolidateAstropyTableTask"""
+
     cat_output = connectionTypes.Output(
         doc="Per-tract horizontal concatenation of the input AstropyTables",
         name="objectAstropyTable_tract",
@@ -130,19 +143,23 @@ class ConsolidateAstropyTableConnections(pipeBase.PipelineTaskConnections,
                 deferLoad=config_input.columns is not None,
             )
             if hasattr(self, name):
-                raise ValueError(f"{config_input=} {name=} is invalid, due to being an existing attribute"
-                                 f" of {self=}")
+                raise ValueError(
+                    f"{config_input=} {name=} is invalid, due to being an existing attribute" f" of {self=}"
+                )
             setattr(self, name, connection)
 
 
-class ConsolidateAstropyTableConfig(pipeBase.PipelineTaskConfig, ConsolidateAstropyTableConfigBase,
-                                    pipelineConnections=ConsolidateAstropyTableConnections):
-    pass
+class ConsolidateAstropyTableConfig(
+    pipeBase.PipelineTaskConfig,
+    ConsolidateAstropyTableConfigBase,
+    pipelineConnections=ConsolidateAstropyTableConnections,
+):
+    """PipelineTaskConfig for ConsolidateAstropyTableTask"""
 
 
 class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
-    """Write patch-merged astropy tables to a tract-level astropy table.
-    """
+    """Write patch-merged astropy tables to a tract-level astropy table."""
+
     _DefaultName = "consolidateAstropyTable"
     ConfigClass = ConsolidateAstropyTableConfig
 
@@ -169,7 +186,7 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
 
                 if inputConfig.columns is not None:
                     columns = inputConfig.columns
-                    data_in = data_in.get(parameters={'columns': columns})
+                    data_in = data_in.get(parameters={"columns": columns})
                 else:
                     columns = tuple(data_in.columns)
 
@@ -180,7 +197,7 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
 
                 if not inputConfig.is_multiband:
                     columns_new = [
-                        column if column == inputConfig.column_id else f'{band}_{column}'
+                        column if column == inputConfig.column_id else f"{band}_{column}"
                         for column in columns
                     ]
                     data_in.rename_columns(columns, columns_new)
@@ -236,10 +253,13 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
 
         for name, data_name in data.items():
             config_input = self.config.inputs[name]
-            tables = [apTab.hstack([data_name[patch][band] for band in bands_sorted], join_type='exact')
-                      if not config_input.is_multiband else data_name[patch][band_null]
-                      for patch in (patches_ref if not config_input.is_multipatch else patches_null)]
-            data[name] = tables[0] if (len(tables) == 1) else apTab.vstack(tables, join_type='exact')
+            tables = [
+                apTab.hstack([data_name[patch][band] for band in bands_sorted], join_type="exact")
+                if not config_input.is_multiband
+                else data_name[patch][band_null]
+                for patch in (patches_ref if not config_input.is_multipatch else patches_null)
+            ]
+            data[name] = tables[0] if (len(tables) == 1) else apTab.vstack(tables, join_type="exact")
         table = apTab.hstack([data[name] for name in self.config.inputs])
 
         butlerQC.put(pipeBase.Struct(cat_output=table), outputRefs)
