@@ -115,7 +115,6 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         doc="list of bandpass filters to fit",
         listCheck=lambda x: len(set(x)) == len(x),
     )
-    fit_linear = pexConfig.Field[bool](default=True, doc="Fit linear parameters to initialize")
     mask_names_zero = pexConfig.ListField[str](
         default=["BAD", "EDGE", "SAT", "NO_DATA"], doc="Mask bits to mask out"
     )
