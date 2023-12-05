@@ -29,15 +29,21 @@ tasks:
             is_multipatch=True,
             storageClass="DataFrame",
           ),
-          "deepCoadd_psexpdev_multiprofit": InputConfig(
-            doc="Point Source + Exponential + DeVaucouleurs source fit",
-            action=MergeMultibandFluxes(name_model="psexpdev"),
-            column_id="id",
-            is_multiband=True,
-          ),
           "deepCoadd_psgauss_multiprofit": InputConfig(
             doc="Point Source + Gaussian source fit",
             action=MergeMultibandFluxes(name_model="psgauss"),
+            column_id="id",
+            is_multiband=True,
+          ),
+          "deepCoadd_psser_multiprofit": InputConfig(
+            doc="Point Source + Sersic source fit",
+            action=MergeMultibandFluxes(name_model="psser"),
+            column_id="id",
+            is_multiband=True,
+          ),
+          "deepCoadd_psexpdev_multiprofit": InputConfig(
+            doc="Point Source + Exponential + DeVaucouleurs source fit",
+            action=MergeMultibandFluxes(name_model="psexpdev"),
             column_id="id",
             is_multiband=True,
           ),
@@ -100,7 +106,7 @@ tasks:
         if parameters.size_include:
             for ax in ("x", "y"):
                 config.columns_target_copy.append(
-                    f"{parameters.model_prefix}_{parameters.size_include}_sigma_{ax}"
+                    f"{parameters.model_prefix}_{parameters.size_include}_reff_{ax}"
                 )
         config.columns_flux = columns_flux
         config.coord_format.column_target_coord1 = f"{parameters.model_prefix}_cen_ra"
