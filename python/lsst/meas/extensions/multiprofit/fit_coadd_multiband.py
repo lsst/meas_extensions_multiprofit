@@ -115,7 +115,6 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         doc="list of bandpass filters to fit",
         listCheck=lambda x: len(set(x)) == len(x),
     )
-    fit_linear = pexConfig.Field[bool](default=True, doc="Fit linear parameters to initialize")
     mask_names_zero = pexConfig.ListField[str](
         default=["BAD", "EDGE", "SAT", "NO_DATA"], doc="Mask bits to mask out"
     )
@@ -272,7 +271,12 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
 
         for comp in comps[:n_psfs]:
             self._init_component(comp, values_init=values_init_psf, limits_init=limits_init_psf)
-        for comp in comps[n_psfs:]:
+        for comp, config_comp in zip(comps[n_psfs:], self.config.sersics.values()):
+            if config_comp.sersicindex.fixed:
+                if g2f.SersicIndexParameterD in values_init:
+                    del values_init[g2f.SersicMixComponentIndexParameterD]
+            else:
+                values_init[g2f.SersicMixComponentIndexParameterD] = config_comp.sersicindex.value_initial
             self._init_component(comp, values_init=values_init, limits_init=limits_init)
         for prior in model.priors:
             if isinstance(prior, g2f.GaussianPrior):
