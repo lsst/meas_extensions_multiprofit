@@ -20,11 +20,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections import defaultdict
-import numpy as np
 
 import lsst.afw.detection as afwDetect
 import lsst.afw.image as afwImage
 import lsst.geom as geom
+import numpy as np
 
 
 def defaultdictNested():

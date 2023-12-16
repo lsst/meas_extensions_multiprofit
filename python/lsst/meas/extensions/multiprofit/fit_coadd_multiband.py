@@ -20,21 +20,18 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import math
-import numpy as np
-import pydantic
-from pydantic.dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, Type
 
 import gauss2d as g2
 import gauss2d.fit as g2f
-
-from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_multiband as fitMB
 import lsst.utils.timer as utilsTimer
-
+import numpy as np
+import pydantic
+from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 from lsst.multiprofit.config import set_config_from_dict
 from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig, PsfRebuildFitFlagError
 from lsst.multiprofit.fit_source import (
@@ -43,8 +40,7 @@ from lsst.multiprofit.fit_source import (
     CatalogSourceFitterConfig,
 )
 from lsst.multiprofit.utils import get_params_uniq
-
-from typing import Type
+from pydantic.dataclasses import dataclass
 
 from .utils import get_spanned_image
 

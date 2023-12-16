@@ -19,14 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import lsst.pex.config as pexConfig
-from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
-import lsst.pipe.base as pipeBase
-import lsst.pipe.base.connectionTypes as connectionTypes
+from collections import defaultdict
 
 import astropy.table as apTab
-from collections import defaultdict
+import lsst.pex.config as pexConfig
+import lsst.pipe.base as pipeBase
+import lsst.pipe.base.connectionTypes as connectionTypes
 import numpy as np
+from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
 
 
 class CatalogAction(ConfigurableAction):
