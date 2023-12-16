@@ -46,12 +46,12 @@ from .utils import get_spanned_image
 
 
 class NotPrimaryError(RuntimeError):
-    """RuntimeError for sources that are not primary and shouldn't be fit"""
+    """RuntimeError for sources that are not primary and shouldn't be fit."""
 
 
 @dataclass(frozen=True, kw_only=True, config=fitMB.CatalogExposureConfig)
 class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC):
-    """Input data from lsst pipelines, parsed for MultiProFit"""
+    """Input data from lsst pipelines, parsed for MultiProFit."""
 
     channel: g2f.Channel = pydantic.Field(title="Channel for the image's band")
     config_fit: CatalogSourceFitterConfig = pydantic.Field(title="Channel for the image's band")
@@ -137,6 +137,11 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
     prior measurements from single- or merged multiband catalogs for
     initialization.
 
+    Parameters
+    ----------
+    **kwargs
+        Keyword arguments to pass to CoaddMultibandFitSubTask.__init__.
+
     Notes
     -----
     See https://github.com/lsst-dm/multiprofit for more MultiProFit info.
@@ -145,7 +150,7 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
     ConfigClass = MultiProFitSourceConfig
     _DefaultName = "multiProFitSource"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
         if NotPrimaryError not in errors_expected:
             errors_expected[NotPrimaryError] = "not_primary_flag"
@@ -168,6 +173,8 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
             The component to initialize.
         values_init
             Initial values to set per parameter type.
+        limits_init
+            Initial limits to set per parameter type.
         """
         # These aren't necessarily all free - should set cen_x, y
         # even if they're fixed, for example

@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections import defaultdict
+from typing import Iterable
 
 import lsst.afw.detection as afwDetect
 import lsst.afw.image as afwImage
@@ -45,32 +46,32 @@ def get_spanned_image(
     bbox: geom.Box2I = None,
     spans: np.ndarray = None,
     get_sig_inv: bool = False,
-):
+) -> tuple[np.ndarray, geom.Box2I, np.ndarray]:
     """Get an image masked by its spanset.
 
     Parameters
     ----------
-    exposure : `lsst.afw.image.Exposure`
+    exposure
         An exposure to extract arrays from.
-    footprint : `lsst.afw.detection`
+    footprint
         The footprint to get spans/bboxes from. Not needed if both of
         `bbox` and `spans` are provided.
-    bbox : `lsst.geom.Box2I`
+    bbox
         The bounding box to subset the exposure with.
         Defaults to the footprint's bbox.
-    spans : `np.ndarray`
+    spans
         A spanset array (inverse mask/selection).
         Defaults to the footprint's spans.
-    get_sig_inv : bool
+    get_sig_inv
         Whether to get the inverse variance and return its square root.
 
     Returns
     -------
-    image : `np.ndarray`
+    image
         The image array, with masked pixels set to zero.
-    bbox : `lsst.geom.Box2I`
+    bbox
         The bounding box used to subset the exposure.
-    sig_inv : `np.ndarray`
+    sig_inv
         The inverse sigma array, with masked pixels set to zero.
         Set to None if `get_sig_inv` is False.
     """
@@ -91,21 +92,21 @@ def get_spanned_image(
     return img.array, bbox, sig_inv
 
 
-def join_and_filter(separator, items, exclusion=None):
+def join_and_filter(separator: str, items: Iterable[str], exclusion: str | None = None) -> str:
     """Join an iterable of items by a separator, filtering out an exclusion.
 
     Parameters
     ----------
-    separator : `string`
+    separator
         The separator to join items by.
-    items : iterable of `str`
+    items
         Items to join.
-    exclusion : `str`, optional
-        The pattern to exclude; default None.
+    exclusion
+        The pattern to exclude.
 
     Returns
     -------
-    joined : `str`
+    joined
         The joined string.
     """
     return separator.join(filter(exclusion, items))

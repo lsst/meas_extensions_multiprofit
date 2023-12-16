@@ -51,6 +51,11 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
     evaluated at the centroid of each source in the corresponding
     catalog.
 
+    Parameters
+    ----------
+    **kwargs
+        Keyword arguments to pass to CoaddPsfFitSubTask.__init__.
+
     Notes
     -----
     See https://github.com/lsst-dm/multiprofit for more MultiProFit info.
