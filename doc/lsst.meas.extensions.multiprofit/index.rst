@@ -14,8 +14,15 @@ lsst.meas.extensions.multiprofit
 .. Using lsst.meas.extensions.multiprofit
 .. ======================================
 
-There is currently one master task, which is a subtask of a generic multiband
-fitting ``lsst.pipe.tasks.PipelineTask`` (``lsst.pipe.tasks.fit_multiband.MultibandFitTask``); future tasks will likely follow this pattern.
+``lsst.meas.extensions.multiprofit`` implements separate tasks for PSF and source model fitting
+using ``lsst.multiprofit``. The tasks depend on more generic ``lsst.pipe.tasks.PipelineTask``
+classes defined in ``lsst.pipe.tasks.fit_coadd_psf`` and ``lsst.pipe.tasks.fit_coadd_multiband``.
+Note that as implied by the names, the PSF fitting task is single-band only.
+
+Because these tasks produce patch-based Arrow/Astropy tables, a generic task to consolidate
+the results into a single multiband tract-based table is also provided. It is anticipated that
+this functionality will be folded into the tasks producing objectTable_tract instances in
+``lsst.pipe.tasks.postprocess``.
 
 .. toctree linking to topics related to using the module's APIs.
 
@@ -28,7 +35,7 @@ Contributing
 ============
 
 ``lsst.meas.extensions.multiprofit`` is developed at https://github.com/lsst-dm/meas_extensions_multiprofit.
-You can find Jira issues for this module under the `meas_extensions_multiprofit <https://jira.lsstcorp.org/issues/?jql=project%20%3D%20DM%20AND%20component%20%3D%20meas_extensions_multiprofit>`_ component.
+You can find Jira issues for multiprofit through `search <https://jira.lsstcorp.org/issues/?jql=text%20~%20%22multiprofit%22>`_.
 
 .. If there are topics related to developing this module (rather than using it), link to this from a toctree placed here.
 
@@ -89,6 +96,11 @@ Configurations
 Python API reference
 ====================
 
-.. automodapi:: lsst.meas.extensions.multiprofit
-   :no-main-docstr:
+.. automodapi:: lsst.meas.extensions.multiprofit.consolidate_astropy_table
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.meas.extensions.multiprofit.fit_coadd_multiband
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.meas.extensions.multiprofit.fit_coadd_psf
    :no-inheritance-diagram:
