@@ -46,7 +46,7 @@ from .utils import get_spanned_image
 
 
 class NotPrimaryError(RuntimeError):
-    """RuntimeError for sources that are not primary and shouldn't be fit."""
+    """RuntimeError for objects that are not primary and shouldn't be fit."""
 
 
 @dataclass(frozen=True, kw_only=True, config=fitMB.CatalogExposureConfig)

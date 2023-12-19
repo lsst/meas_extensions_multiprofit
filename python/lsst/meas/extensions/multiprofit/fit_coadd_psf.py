@@ -19,6 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Any, Mapping
+
+import astropy.table
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
@@ -29,14 +32,28 @@ from lsst.pex.exceptions import InvalidParameterError
 from pydantic.dataclasses import dataclass
 
 
+class IsParentError(RuntimeError):
+    """RuntimeError for objects that are not primary and shouldn't be fit."""
+
+
 @dataclass(frozen=True, kw_only=True, config=fitCP.CatalogExposureConfig)
 class CatalogExposure(fitCP.CatalogExposurePsf, CatalogExposurePsfABC):
     """A CatalogExposure for PSF fitting."""
+
+    def get_psf_image(
+        self,
+        source: astropy.table.Row | Mapping[str, Any],
+        config: CatalogPsfFitterConfig | None = None,
+    ):
+        if config and hasattr(config, "fit_parents") and not config.fit_parents and (source["parent"] == 0):
+            raise IsParentError(f"{source['id']=} is a parent and will be skipped")
+        return fitCP.CatalogExposurePsf.get_psf_image(source=source, config=config)
 
 
 class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
     """Configuration for the MultiProFit Gaussian mixture PSF fitter."""
 
+    fit_parents = pexConfig.Field[bool](default=False, doc="Whether to fit parent object PSFs")
     prefix_column = pexConfig.Field[str](default="mpf_psf_", doc="Column name prefix")
 
     def setDefaults(self):
@@ -94,5 +111,11 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
             A table with fit parameters for the PSF model at the location
             of each source.
         """
+        if not self.config.fit_parents:
+            if "is_parent" not in self.errors_expected:
+                self.errors_expected[IsParentError] = "is_parent"
+        elif "is_parent" in self.errors_expected:
+            del self.errors_expected["is_parent"]
+
         catalog = self.fit(catexp=catexp, config=self.config, **kwargs)
         return pipeBase.Struct(output=astropy_to_arrow(catalog))
