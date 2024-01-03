@@ -43,8 +43,8 @@ def defaultdictNested():
 def get_spanned_image(
     exposure: afwImage.Exposure,
     footprint: afwDetect.Footprint = None,
-    bbox: geom.Box2I = None,
-    spans: np.ndarray = None,
+    bbox: geom.Box2I | None = None,
+    spans: np.ndarray | None = None,
     get_sig_inv: bool = False,
 ) -> tuple[np.ndarray, geom.Box2I, np.ndarray]:
     """Get an image masked by its spanset.
