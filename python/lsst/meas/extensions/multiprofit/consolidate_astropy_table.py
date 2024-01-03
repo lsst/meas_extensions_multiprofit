@@ -19,14 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import lsst.pex.config as pexConfig
-from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
-import lsst.pipe.base as pipeBase
-import lsst.pipe.base.connectionTypes as connectionTypes
+from collections import defaultdict
 
 import astropy.table as apTab
-from collections import defaultdict
+import lsst.pex.config as pexConfig
+import lsst.pipe.base as pipeBase
+import lsst.pipe.base.connectionTypes as connectionTypes
 import numpy as np
+from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
 
 
 class CatalogAction(ConfigurableAction):
@@ -90,7 +90,7 @@ class MergeMultibandFluxes(CatalogAction):
 
 
 class InputConfig(pexConfig.Config):
-    """Config for inputs to ConsolidateAstropyTableTask"""
+    """Config for inputs to ConsolidateAstropyTableTask."""
 
     doc = pexConfig.Field[str](doc="Doc for connection", optional=False)
     action = ConfigurableActionField[CatalogAction](
@@ -107,7 +107,7 @@ class InputConfig(pexConfig.Config):
 
 
 class ConsolidateAstropyTableConfigBase(pexConfig.Config):
-    """Config for ConsolidateAstropyTableTask"""
+    """Config for ConsolidateAstropyTableTask."""
 
     inputs = pexConfig.ConfigDictField(
         doc="Mapping of input dataset type config by name",
@@ -117,8 +117,12 @@ class ConsolidateAstropyTableConfigBase(pexConfig.Config):
     )
 
 
-class ConsolidateAstropyTableConnections(pipeBase.PipelineTaskConnections, dimensions=("tract", "skymap")):
-    """Connections for ConsolidateAstropyTableTask"""
+class ConsolidateAstropyTableConnections(
+    # Ignore the undocumented inherited config arg in __init__
+    pipeBase.PipelineTaskConnections,
+    dimensions=("tract", "skymap"),  # numpydoc ignore=PR01
+):
+    """Connections for ConsolidateAstropyTableTask."""
 
     cat_output = connectionTypes.Output(
         doc="Per-tract horizontal concatenation of the input AstropyTables",
@@ -154,7 +158,7 @@ class ConsolidateAstropyTableConfig(
     ConsolidateAstropyTableConfigBase,
     pipelineConnections=ConsolidateAstropyTableConnections,
 ):
-    """PipelineTaskConfig for ConsolidateAstropyTableTask"""
+    """PipelineTaskConfig for ConsolidateAstropyTableTask."""
 
 
 class ConsolidateAstropyTableTask(pipeBase.PipelineTask):

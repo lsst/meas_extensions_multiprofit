@@ -19,16 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from pydantic.dataclasses import dataclass
-
-from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 import lsst.pex.config as pexConfig
-from lsst.pex.exceptions import InvalidParameterError
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
 import lsst.utils.timer as utilsTimer
-
+from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 from lsst.multiprofit.fit_psf import CatalogExposurePsfABC, CatalogPsfFitter, CatalogPsfFitterConfig
+from lsst.pex.exceptions import InvalidParameterError
+from pydantic.dataclasses import dataclass
 
 
 @dataclass(frozen=True, kw_only=True, config=fitCP.CatalogExposureConfig)
@@ -52,6 +50,11 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
     This task uses MultiProFit to fit a PSF model to the coadd PSF,
     evaluated at the centroid of each source in the corresponding
     catalog.
+
+    Parameters
+    ----------
+    **kwargs
+        Keyword arguments to pass to CoaddPsfFitSubTask.__init__.
 
     Notes
     -----
