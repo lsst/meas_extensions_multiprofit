@@ -105,6 +105,22 @@ class InputConfig(pexConfig.Config):
     is_multipatch = pexConfig.Field[bool](doc="Whether the dataset is multipatch or not", default=False)
     storageClass = pexConfig.Field[str](doc="Storage class for DatasetType", default="ArrowAstropy")
 
+    def get_connection(self, name: str) -> connectionTypes.Input:
+        dimensions = ["skymap", "tract"]
+        if not self.is_multipatch:
+            dimensions.append("patch")
+        if not self.is_multiband:
+            dimensions.append("band")
+        connection = connectionTypes.Input(
+            doc=self.doc,
+            name=name,
+            storageClass=self.storageClass,
+            dimensions=dimensions,
+            multiple=not (self.is_multiband and self.is_multipatch),
+            deferLoad=self.columns is not None,
+        )
+        return connection
+
 
 class ConsolidateAstropyTableConfigBase(pexConfig.Config):
     """Config for ConsolidateAstropyTableTask."""
@@ -133,23 +149,11 @@ class ConsolidateAstropyTableConnections(
 
     def __init__(self, *, config: ConsolidateAstropyTableConfigBase):
         for name, config_input in config.inputs.items():
-            dimensions = ["skymap", "tract"]
-            if not config_input.is_multipatch:
-                dimensions.append("patch")
-            if not config_input.is_multiband:
-                dimensions.append("band")
-            connection = connectionTypes.Input(
-                doc=config_input.doc,
-                name=name,
-                storageClass=config_input.storageClass,
-                dimensions=dimensions,
-                multiple=not config_input.is_multiband,
-                deferLoad=config_input.columns is not None,
-            )
             if hasattr(self, name):
                 raise ValueError(
                     f"{config_input=} {name=} is invalid, due to being an existing attribute" f" of {self=}"
                 )
+            connection = config_input.get_connection(name)
             setattr(self, name, connection)
 
 
