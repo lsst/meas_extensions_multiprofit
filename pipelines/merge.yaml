@@ -4,7 +4,10 @@ parameters:
   bands_match: ["g", "r", "i"]
   # Bands to match aperture fluxes on as a fallback if model fit failed
   bands_fallback: []
-  include_psflux: True
+  include_psflux: False
+  merge_psexpdev: False
+  merge_psgauss: False
+  merge_sersic: False
   model_prefix: "mpf_psgauss"
   size_include: None
 tasks:
@@ -16,24 +19,18 @@ tasks:
         from lsst.meas.extensions.multiprofit.consolidate_astropy_table import (
           InputConfig, MergeMultibandFluxes,
         )
-        config.inputs = {
+        inputs = {
           "deepCoadd_psfs_multiprofit": InputConfig(
             doc="PSF fit parameters",
             column_id="id",
-            is_multiband=False,
           ),
           "objectTable_tract": InputConfig(
             doc="Merged object table",
-            columns=["refExtendedness"],
+            columns=["objectId", "refExtendedness"],  # objectId is needed for inner join
             is_multiband=True,
             is_multipatch=True,
+            join_column="objectId",
             storageClass="DataFrame",
-          ),
-          "deepCoadd_psgauss_multiprofit": InputConfig(
-            doc="Point Source + Gaussian source fit",
-            action=MergeMultibandFluxes(name_model="psgauss"),
-            column_id="id",
-            is_multiband=True,
           ),
           "deepCoadd_psser_multiprofit": InputConfig(
             doc="Point Source + Sersic source fit",
@@ -41,13 +38,29 @@ tasks:
             column_id="id",
             is_multiband=True,
           ),
-          "deepCoadd_psexpdev_multiprofit": InputConfig(
+        }
+        if parameters.merge_psexpdev:
+          inputs["deepCoadd_psexpdev_multiprofit"] = InputConfig(
             doc="Point Source + Exponential + DeVaucouleurs source fit",
             action=MergeMultibandFluxes(name_model="psexpdev"),
             column_id="id",
             is_multiband=True,
-          ),
-        }
+          )
+        if parameters.merge_psgauss:
+          inputs["deepCoadd_psgauss_multiprofit"] = InputConfig(
+            doc="Point Source + Gaussian source fit",
+            action=MergeMultibandFluxes(name_model="psgauss"),
+            column_id="id",
+            is_multiband=True,
+          )
+        if parameters.merge_sersic:
+          inputs["deepCoadd_ser_multiprofit"] = InputConfig(
+            doc="Sersic source fit",
+            action=MergeMultibandFluxes(name_model="ser"),
+            column_id="id",
+            is_multiband=True,
+          )
+        config.inputs = inputs
   match_multiprofit:
     class: lsst.pipe.tasks.match_tract_catalog.MatchTractCatalogTask
     config:
@@ -64,11 +77,10 @@ tasks:
         print(fluxes_ref)
         config.match_tract_catalog.columns_ref_flux = fluxes_ref
         config.match_tract_catalog.columns_ref_meas = ["ra", "dec"] + fluxes_ref
-        # TODO: Figure out why the list comp version  not have parameters in scope
-        # fluxes
+        # TODO: Figure out why the list comp version does not have fluxes in scope
         fluxes_meas = []
         for band in parameters.bands_match:
-          fluxes_meas.append(f"{parameters.model_prefix}_{band}_flux") 
+          fluxes_meas.append(f"{parameters.model_prefix}_{band}_flux")
         columns_meas = [
           f"{parameters.model_prefix}_cen_ra", f"{parameters.model_prefix}_cen_dec"
         ] + fluxes_meas
