@@ -56,7 +56,7 @@ tasks:
         # Target settings are likely common to all object tables
         from lsst.pipe.tasks.match_tract_catalog_probabilistic import MatchTractCatalogProbabilisticTask
         config.match_tract_catalog.retarget(MatchTractCatalogProbabilisticTask)
-        
+
         print(f"{parameters.bands_match=}")
         fluxes_ref = [
           f"flux_{band}" for bands in (parameters.bands_match, parameters.bands_fallback) for band in bands
@@ -76,11 +76,11 @@ tasks:
         config.match_tract_catalog.columns_target_err = [f"{col}_err" for col in columns_meas]
         config.match_tract_catalog.coord_format.column_target_coord1 = f"{parameters.model_prefix}_cen_ra"
         config.match_tract_catalog.coord_format.column_target_coord2 = f"{parameters.model_prefix}_cen_dec"
-        
+
         config.match_tract_catalog.mag_faintest_ref = 27.0
-        config.match_tract_catalog.columns_ref_copy = [ "id", "truth_type" ]
-        config.match_tract_catalog.columns_ref_select_true = [ "is_unique_truth_entry" ]
-        config.match_tract_catalog.columns_target_copy = [ "objectId" ]
+        config.match_tract_catalog.columns_ref_copy = ["id", "truth_type"]
+        config.match_tract_catalog.columns_ref_select_true = ["is_unique_truth_entry"]
+        config.match_tract_catalog.columns_target_copy = ["objectId"]
         config.match_tract_catalog.columns_target_select_true = []
         config.match_tract_catalog.columns_target_select_false = [
           f"{parameters.model_prefix}_not_primary_flag",
@@ -92,7 +92,7 @@ tasks:
 
       python: |
         from lsst.pipe.tasks.diff_matched_tract_catalog import MatchedCatalogFluxesConfig
-        
+
         columns_flux = {}
         config.columns_target_copy = ["objectId", "patch"]
         for band in parameters.bands_match:
