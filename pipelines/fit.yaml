@@ -7,6 +7,7 @@ tasks:
       python: |
         from lsst.meas.extensions.multiprofit.fit_coadd_psf import MultiProFitPsfTask
         config.fit_coadd_psf.retarget(MultiProFitPsfTask)
+        config.fit_coadd_psf.config_fit.eval_residual = False
   fit_src_psgauss_multiprofit:
     class: lsst.pipe.tasks.fit_coadd_multiband.CoaddMultibandFitTask
     config:
