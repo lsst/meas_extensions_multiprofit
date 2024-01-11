@@ -33,7 +33,8 @@ import numpy as np
 import pydantic
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 from lsst.multiprofit.config import set_config_from_dict
-from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig, PsfRebuildFitFlagError
+from lsst.multiprofit.errors import PsfRebuildFitFlagError
+from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig
 from lsst.multiprofit.fit_source import (
     CatalogExposureSourcesABC,
     CatalogSourceFitterABC,
@@ -42,11 +43,8 @@ from lsst.multiprofit.fit_source import (
 from lsst.multiprofit.utils import get_params_uniq
 from pydantic.dataclasses import dataclass
 
+from .errors import IsParentError, NotPrimaryError
 from .utils import get_spanned_image
-
-
-class NotPrimaryError(RuntimeError):
-    """RuntimeError for objects that are not primary and shouldn't be fit."""
 
 
 @dataclass(frozen=True, kw_only=True, config=fitMB.CatalogExposureConfig)
@@ -124,8 +122,9 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
     def setDefaults(self):
         super().setDefaults()
         self.flag_errors = {
-            "not_primary_flag": "NotPrimaryError",
-            "psf_fit_flag": "PsfRebuildFitFlagError",
+            IsParentError.column_name(): "IsParentError",
+            NotPrimaryError.column_name(): "NotPrimaryError",
+            PsfRebuildFitFlagError.column_name(): "PsfRebuildFitFlagError",
         }
 
 
@@ -152,10 +151,9 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
 
     def __init__(self, **kwargs: Any):
         errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
-        if NotPrimaryError not in errors_expected:
-            errors_expected[NotPrimaryError] = "not_primary_flag"
-        if PsfRebuildFitFlagError not in errors_expected:
-            errors_expected[PsfRebuildFitFlagError] = "psf_fit_flag"
+        for error_catalog in (IsParentError, NotPrimaryError, PsfRebuildFitFlagError):
+            if error_catalog not in errors_expected:
+                errors_expected[error_catalog] = error_catalog.column_name()
         CatalogSourceFitterABC.__init__(self, errors_expected=errors_expected)
         fitMB.CoaddMultibandFitSubTask.__init__(self, **kwargs)
 

@@ -19,35 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Mapping
-
-import astropy.table
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
 import lsst.utils.timer as utilsTimer
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
-from lsst.multiprofit.fit_psf import CatalogExposurePsfABC, CatalogPsfFitter, CatalogPsfFitterConfig
+from lsst.multiprofit.fit_psf import CatalogPsfFitter, CatalogPsfFitterConfig
 from lsst.pex.exceptions import InvalidParameterError
-from pydantic.dataclasses import dataclass
 
-
-class IsParentError(RuntimeError):
-    """RuntimeError for objects that are not primary and shouldn't be fit."""
-
-
-@dataclass(frozen=True, kw_only=True, config=fitCP.CatalogExposureConfig)
-class CatalogExposure(fitCP.CatalogExposurePsf, CatalogExposurePsfABC):
-    """A CatalogExposure for PSF fitting."""
-
-    def get_psf_image(
-        self,
-        source: astropy.table.Row | Mapping[str, Any],
-        config: CatalogPsfFitterConfig | None = None,
-    ):
-        if config and hasattr(config, "fit_parents") and not config.fit_parents and (source["parent"] == 0):
-            raise IsParentError(f"{source['id']=} is a parent and will be skipped")
-        return fitCP.CatalogExposurePsf.get_psf_image(source=source, config=config)
+from .errors import IsParentError
 
 
 class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
@@ -89,17 +69,29 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
         CatalogPsfFitter.__init__(self, errors_expected=errors_expected)
         fitCP.CoaddPsfFitSubTask.__init__(self, **kwargs)
 
+    def check_source(self, source, config):
+        if (
+            config
+            and hasattr(config, "fit_parents")
+            and not config.fit_parents
+            and (source["parent"] == 0)
+            and (source["deblend_nChild"] > 0)
+        ):
+            raise IsParentError(
+                f"{source['id']=} is a parent with nChild={source['deblend_nChild']}" f" and will be skipped"
+            )
+
     @utilsTimer.timeMethod
     def run(
         self,
-        catexp: CatalogExposure,
+        catexp: fitCP.CatalogExposurePsf,
         **kwargs,
     ) -> pipeBase.Struct:
         """Run the MultiProFit PSF task on a catalog-exposure pair.
 
         Parameters
         ----------
-        catexp : `CatalogExposure`
+        catexp
             An exposure to fit a model PSF at the position of all
             sources in the corresponding catalog.
         **kwargs
@@ -107,15 +99,24 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
 
         Returns
         -------
-        catalog : `astropy.Table`
+        catalog
             A table with fit parameters for the PSF model at the location
             of each source.
         """
+        is_parent_name = IsParentError.column_name()
         if not self.config.fit_parents:
-            if "is_parent" not in self.errors_expected:
-                self.errors_expected[IsParentError] = "is_parent"
-        elif "is_parent" in self.errors_expected:
-            del self.errors_expected["is_parent"]
+            if is_parent_name not in self.errors_expected:
+                self.errors_expected[IsParentError] = is_parent_name
+            if "IsParentError" not in self.config.flag_errors.values():
+                self.config._frozen = False
+                self.config.flag_errors[is_parent_name] = "IsParentError"
+                self.config._frozen = True
+        elif is_parent_name in self.errors_expected:
+            del self.errors_expected[is_parent_name]
+            if is_parent_name in self.config.flag_errors.keys():
+                self.config._frozen = False
+                del self.config.flag_errors[is_parent_name]
+                self.config._frozen = True
 
         catalog = self.fit(catexp=catexp, config=self.config, **kwargs)
         return pipeBase.Struct(output=astropy_to_arrow(catalog))
