@@ -117,8 +117,8 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
     prefix_column = pexConfig.Field[str](default="mpf_", doc="Column name prefix")
 
     def bands_read_only(self) -> set[str]:
-        # TODO: Re-implement determination of prior-only bands once priors
-        # are re-implemented (DM-3xxxx)
+        # TODO: Re-implement determination of prior-only bands once
+        # data-driven priors are re-implemented (DM-4xxxx)
         return set()
 
     def setDefaults(self):
