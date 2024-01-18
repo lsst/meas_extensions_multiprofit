@@ -81,10 +81,12 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         )
         sigma_inv[~mask] = 0
 
+        coordsys = g2.CoordinateSystem(1.0, 1.0, bbox.beginX, bbox.beginY)
+
         obs = g2f.Observation(
-            image=g2.ImageD(img),
-            sigma_inv=g2.ImageD(sigma_inv),
-            mask_inv=g2.ImageB(mask),
+            image=g2.ImageD(img, coordsys),
+            sigma_inv=g2.ImageD(sigma_inv, coordsys),
+            mask_inv=g2.ImageB(mask, coordsys),
             channel=self.channel,
         )
         return obs
@@ -192,20 +194,18 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         cenx_img, ceny_img = self.catexps[0].exposure.wcs.skyToPixel(
             geom.SpherePoint(source["coord_ra"], source["coord_dec"])
         )
-        bbox = source.getFootprint().getBBox()
-        begin_x, begin_y = bbox.beginX, bbox.beginY
         # multiprofit bottom left corner coords are 0, 0, not -0.5, -0.5
-        cen_x = cenx_img - begin_x + 0.5
-        cen_y = ceny_img - begin_y + 0.5
+        cen_x = cenx_img + 0.5
+        cen_y = ceny_img + 0.5
         return cen_x, cen_y
 
     def get_model_radec(self, source: Mapping[str, Any], cen_x: float, cen_y: float):
-        bbox = source.getFootprint().getBBox()
-        begin_x, begin_y = bbox.beginX, bbox.beginY
+        # Note: can get footprint from source.getFootprint()
+        # ... but only for one band, so it's not needed anymore
+        # since the coordsys is in tract coordinates already
+
         # multiprofit bottom left corner coords are 0, 0, not -0.5, -0.5
-        cen_x_img = cen_x + begin_x - 0.5
-        cen_y_img = cen_y + begin_y - 0.5
-        ra, dec = self.catexps[0].exposure.wcs.pixelToSky(cen_x_img, cen_y_img)
+        ra, dec = self.catexps[0].exposure.wcs.pixelToSky(cen_x - 0.5, cen_y - 0.5)
         return ra.asDegrees(), dec.asDegrees()
 
     def initialize_model(
@@ -228,11 +228,17 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
                     flux = 1
         n_psfs = self.config.n_pointsources
         n_extended = len(self.config.sersics)
-        observation = model.data[0]
-        x_max = float(observation.image.n_cols)
-        y_max = float(observation.image.n_rows)
-        limits_x.max = x_max
-        limits_y.max = y_max
+        # Make restrictive centroid limits (intersection, not union)
+        x_min, y_min, x_max, y_max = -np.Inf, -np.Inf, np.Inf, np.Inf
+        for observation in model.data:
+            coordsys = observation.image.coordsys
+            x_min = max(x_min, coordsys.x_min)
+            y_min = max(y_min, coordsys.y_min)
+            x_max = min(x_max, coordsys.x_min + float(observation.image.n_cols))
+            y_max = min(y_max, coordsys.y_min + float(observation.image.n_rows))
+        # Hack to avoid check for min < max
+        limits_x.min, limits_x.max, limits_x.min = 0.0, x_max, x_min
+        limits_y.min, limits_y.max, limits_y.min = 0.0, y_max, y_min
         try:
             cenx, ceny = self.get_model_cens(source)
         # TODO: determine which exceptions can occur above
