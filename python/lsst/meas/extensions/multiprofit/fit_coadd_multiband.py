@@ -19,26 +19,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
 import math
-from typing import Any, Mapping, Sequence, Type
+from typing import Any, Mapping, Sequence
 
 import gauss2d as g2
 import gauss2d.fit as g2f
-import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_multiband as fitMB
 import lsst.utils.timer as utilsTimer
 import numpy as np
 import pydantic
+from astropy.table import Table
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 from lsst.multiprofit.config import set_config_from_dict
 from lsst.multiprofit.errors import PsfRebuildFitFlagError
-from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig
+from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig, CatalogPsfFitterConfigData
 from lsst.multiprofit.fit_source import (
     CatalogExposureSourcesABC,
     CatalogSourceFitterABC,
     CatalogSourceFitterConfig,
+    CatalogSourceFitterConfigData,
 )
 from lsst.multiprofit.utils import get_params_uniq
 from pydantic.dataclasses import dataclass
@@ -54,11 +56,13 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
     channel: g2f.Channel = pydantic.Field(title="Channel for the image's band")
     config_fit: CatalogSourceFitterConfig = pydantic.Field(title="Channel for the image's band")
 
-    def get_psfmodel(self, source):
+    def get_psf_model(self, source):
         match = np.argwhere(
-            (self.table_psf_fits[self.config_fit_psf.column_id] == source[self.config_fit.column_id])
+            (self.table_psf_fits[self.psf_model_data.config.column_id] == source[self.config_fit.column_id])
         )[0][0]
-        return self.config_fit_psf.rebuild_psfmodel(self.table_psf_fits[match])
+        psf_model = self.psf_model_data.psfmodel
+        self.psf_model_data.init_psfmodel(self.table_psf_fits[match])
+        return psf_model
 
     def get_source_observation(self, source) -> g2f.Observation:
         if (not source["detect_isPrimary"]) or source["merge_peak_sky"]:
@@ -92,14 +96,12 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         return obs
 
     def __post_init__(self):
-        # Regular standard library dataclasses require this hideous workaround
-        # due to https://github.com/python/cpython/issues/83315 : super(
-        #  fitMB.CatalogExposureInputs, self).__thisclass__.__post_init__(self)
-        # ... but pydantic dataclasses do not seem to, and also don't pass self
-        super().__post_init__()
+        config_dict = self.table_psf_fits.meta["config"]
+        # TODO: Can/should this be the derived type (MultiProFitPsfConfig)?
         config = CatalogPsfFitterConfig()
-        set_config_from_dict(config, self.table_psf_fits.meta["config"])
-        object.__setattr__(self, "config_fit_psf", config)
+        set_config_from_dict(config, config_dict)
+        config_data = CatalogPsfFitterConfigData(config=config)
+        object.__setattr__(self, "psf_model_data", config_data)
 
 
 class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFitSubConfig):
@@ -159,138 +161,176 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         CatalogSourceFitterABC.__init__(self, errors_expected=errors_expected)
         fitMB.CoaddMultibandFitSubTask.__init__(self, **kwargs)
 
-    @staticmethod
-    def _init_component(
-        component: g2f.Component,
-        values_init: dict[Type[g2f.ParameterD], float] = None,
-        limits_init: dict[Type[g2f.ParameterD], g2f.LimitsD] = None,
+    def copy_centroid_errors(
+        self,
+        columns_cenx_err_copy: tuple[str],
+        columns_ceny_err_copy: tuple[str],
+        results: Table,
+        catalog_multi: Sequence,
+        catexps: list[CatalogExposureSourcesABC],
+        config_data: CatalogSourceFitterConfigData,
     ):
-        """Initialize component parameter values.
-
-        Parameters
-        ----------
-        component : `gauss2d.fit.Component`
-            The component to initialize.
-        values_init
-            Initial values to set per parameter type.
-        limits_init
-            Initial limits to set per parameter type.
-        """
-        # These aren't necessarily all free - should set cen_x, y
-        # even if they're fixed, for example
-        params_init = get_params_uniq(component)
-        for param in params_init:
-            type_param = type(param)
-            if (value := values_init.get(type_param)) is not None:
-                if param.limits.check(value):
-                    param.value = value
-            if (limits := limits_init.get(type_param)) is not None:
-                value = value if value is not None else param.value
-                if not limits.check(value):
-                    param.value = (limits.max + limits.min) / 2.0
-                param.limits = limits
-
-    def get_model_cens(self, source: Mapping[str, Any]):
-        cenx_img, ceny_img = self.catexps[0].exposure.wcs.skyToPixel(
-            geom.SpherePoint(source["coord_ra"], source["coord_dec"])
-        )
-        # multiprofit bottom left corner coords are 0, 0, not -0.5, -0.5
-        cen_x = cenx_img + 0.5
-        cen_y = ceny_img + 0.5
-        return cen_x, cen_y
+        for column in columns_cenx_err_copy:
+            results[column] = catalog_multi["slot_Centroid_xErr"]
+        for column in columns_ceny_err_copy:
+            results[column] = catalog_multi["slot_Centroid_yErr"]
 
     def get_model_radec(self, source: Mapping[str, Any], cen_x: float, cen_y: float):
-        # Note: can get footprint from source.getFootprint()
-        # ... but only for one band, so it's not needed anymore
-        # since the coordsys is in tract coordinates already
-
-        # multiprofit bottom left corner coords are 0, 0, not -0.5, -0.5
-        ra, dec = self.catexps[0].exposure.wcs.pixelToSky(cen_x - 0.5, cen_y - 0.5)
+        # no extra conversions are needed here - cen_x, cen_y are in catalog
+        # coordinates already
+        ra, dec = self.catexps[0].exposure.wcs.pixelToSky(cen_x, cen_y)
         return ra.asDegrees(), dec.asDegrees()
 
     def initialize_model(
-        self, model: g2f.Model, source: Mapping[str, Any], limits_x: g2f.LimitsD, limits_y: g2f.LimitsD
+        self,
+        model: g2f.Model,
+        source: Mapping[str, Any],
+        catexps: list[CatalogExposureSourcesABC],
+        values_init: Mapping[g2f.ParameterD, float] | None = None,
+        centroid_pixel_offset: float = 0,
     ):
-        comps = model.sources[0].components
-        sig_x = math.sqrt(source["base_SdssShape_xx"])
-        sig_y = math.sqrt(source["base_SdssShape_yy"])
-        # There is a sign convention difference
-        rho = np.clip(-source["base_SdssShape_xy"] / (sig_x * sig_y), -0.5, 0.5)
+        sig_x = math.sqrt(source["slot_Shape_xx"])
+        sig_y = math.sqrt(source["slot_Shape_yy"])
+        # TODO: Verify if there's a sign difference here
+        rho = np.clip(source["slot_Shape_xy"] / (sig_x * sig_y), -0.5, 0.5)
         if not np.isfinite(rho):
             sig_x, sig_y, rho = 0.5, 0.5, 0
-        if not source["base_SdssShape_flag"]:
-            flux = source["base_SdssShape_instFlux"]
-        else:
-            flux = source["base_GaussianFlux_instFlux"]
-            if not (flux > 0):
-                flux = source["base_PsfFlux_instFlux"]
-                if not (flux > 0):
-                    flux = 1
-        n_psfs = self.config.n_pointsources
-        n_extended = len(self.config.sersics)
+
         # Make restrictive centroid limits (intersection, not union)
         x_min, y_min, x_max, y_max = -np.Inf, -np.Inf, np.Inf, np.Inf
-        for observation in model.data:
+
+        fluxes_init = []
+        fluxes_limits = []
+
+        n_observations = len(model.data)
+        n_components = len(model.sources[0].components)
+
+        for idx_obs, observation in enumerate(model.data):
             coordsys = observation.image.coordsys
+            catexp = catexps[idx_obs]
+            band = catexp.band
+
             x_min = max(x_min, coordsys.x_min)
             y_min = max(y_min, coordsys.y_min)
             x_max = min(x_max, coordsys.x_min + float(observation.image.n_cols))
             y_max = min(y_max, coordsys.y_min + float(observation.image.n_rows))
-        # Hack to avoid check for min < max
-        limits_x.min, limits_x.max, limits_x.min = 0.0, x_max, x_min
-        limits_y.min, limits_y.max, limits_y.min = 0.0, y_max, y_min
+
+            flux_total = np.nansum(observation.image.data[observation.mask_inv.data])
+
+            column_ref = f"merge_measurement_{band}"
+            if column_ref in source.schema.getNames() and source[column_ref]:
+                row = source
+            else:
+                row = catexp.catalog.find(source["id"])
+
+            if not row["base_SdssShape_flag"]:
+                flux_init = row["base_SdssShape_instFlux"]
+            else:
+                flux_init = row["slot_GaussianFlux_instFlux"]
+                if not (flux_init > 0):
+                    flux_init = row["slot_PsfFlux_instFlux"]
+
+            calib = catexp.exposure.photoCalib
+            flux_init = (
+                calib.instFluxToNanojansky(flux_init) if (flux_init > 0) else max(flux_total, 1.0)
+            )
+            flux_max = 10 * max((flux_init, flux_total))
+            flux_min = min(1e-12, flux_max / 1000)
+            fluxes_init.append(flux_init / n_components)
+            fluxes_limits.append((flux_min, flux_max))
+
         try:
-            cenx, ceny = self.get_model_cens(source)
+            cen_x, cen_y = (
+                source["slot_Centroid_x"] - centroid_pixel_offset,
+                source["slot_Centroid_y"] - centroid_pixel_offset,
+            )
         # TODO: determine which exceptions can occur above
         except Exception:
-            cenx = observation.image.n_cols / 2.0
-            ceny = observation.image.n_rows / 2.0
-        flux = flux / (n_psfs + n_extended)
-        values_init = {
-            g2f.IntegralParameterD: flux,
-            g2f.CentroidXParameterD: cenx,
-            g2f.CentroidYParameterD: ceny,
-            g2f.ReffXParameterD: sig_x,
-            g2f.ReffYParameterD: sig_y,
-            g2f.SigmaXParameterD: sig_x,
-            g2f.SigmaYParameterD: sig_y,
-            g2f.RhoParameterD: -rho,
-        }
-        # Do not initialize PSF size/rho: they'll all stay zero
-        params_psf_init = (g2f.IntegralParameterD, g2f.CentroidXParameterD, g2f.CentroidYParameterD)
-        values_init_psf = {key: values_init[key] for key in params_psf_init}
-        size_major = g2.EllipseMajor(g2.Ellipse(sigma_x=sig_x, sigma_y=sig_y, rho=rho)).r_major
+            # TODO: Add bbox coords or remove
+            cen_x = observation.image.n_cols / 2.0
+            cen_y = observation.image.n_rows / 2.0
+
         # An R_eff larger than the box size is problematic. This should also
         # stop unreasonable size proposals; a log10 transform isn't enough.
         # TODO: Try logit for r_eff?
-        flux_max = 5 * max([np.sum(np.abs(datum.image.data)) for datum in model.data])
-        flux_min = 1 / flux_max
-        limits_flux = g2f.LimitsD(flux_min, flux_max, "unreliable flux limits")
-
-        limits_init = {
-            g2f.IntegralParameterD: limits_flux,
-            g2f.ReffXParameterD: g2f.LimitsD(1e-5, x_max),
-            g2f.ReffYParameterD: g2f.LimitsD(1e-5, y_max),
-            g2f.SigmaXParameterD: g2f.LimitsD(1e-5, x_max),
-            g2f.SigmaYParameterD: g2f.LimitsD(1e-5, y_max),
+        size_major = g2.EllipseMajor(g2.Ellipse(sigma_x=sig_x, sigma_y=sig_y, rho=rho)).r_major
+        limits_size = max(5.0 * size_major, 2.0 * np.hypot(x_max - x_min, y_max - y_min))
+        limits_xy = (1e-5, limits_size)
+        params_limits_init = {
+            g2f.CentroidXParameterD: (cen_x, (x_min, x_max)),
+            g2f.CentroidYParameterD: (cen_y, (y_min, y_max)),
+            g2f.ReffXParameterD: (sig_x, limits_xy),
+            g2f.ReffYParameterD: (sig_y, limits_xy),
+            g2f.SigmaXParameterD: (sig_x, limits_xy),
+            g2f.SigmaYParameterD: (sig_y, limits_xy),
+            g2f.RhoParameterD: (rho, None),
+            # TODO: get guess from configs?
+            g2f.SersicMixComponentIndexParameterD: (1.0, None),
         }
-        limits_init_psf = {g2f.IntegralParameterD: limits_init[g2f.IntegralParameterD]}
 
-        for comp in comps[:n_psfs]:
-            self._init_component(comp, values_init=values_init_psf, limits_init=limits_init_psf)
-        for comp, config_comp in zip(comps[n_psfs:], self.config.sersics.values()):
-            if config_comp.sersicindex.fixed:
-                if g2f.SersicIndexParameterD in values_init:
-                    del values_init[g2f.SersicMixComponentIndexParameterD]
+        # TODO: There ought to be a better way to not get the PSF centroids
+        # (those are part of model.data's fixed parameters)
+        params_init = (
+            tuple(
+                (
+                    param
+                    for param in get_params_uniq(model.sources[0])
+                    if param.free
+                    or (
+                        isinstance(param, g2f.CentroidXParameterD)
+                        or isinstance(param, g2f.CentroidYParameterD)
+                    )
+                )
+            )
+            if (len(model.sources) == 1)
+            else tuple(
+                {
+                    param: None
+                    for source in model.sources
+                    for param in get_params_uniq(source)
+                    if param.free
+                    or (
+                        isinstance(param, g2f.CentroidXParameterD)
+                        or isinstance(param, g2f.CentroidYParameterD)
+                    )
+                }.keys()
+            )
+        )
+
+        idx_obs = 0
+        for param in params_init:
+            if param.linear:
+                value_init = fluxes_init[idx_obs]
+                limits_new = fluxes_limits[idx_obs]
+                idx_obs += 1
+                if idx_obs == n_observations:
+                    idx_obs = 0
             else:
-                values_init[g2f.SersicMixComponentIndexParameterD] = config_comp.sersicindex.value_initial
-            self._init_component(comp, values_init=values_init, limits_init=limits_init)
+                value_init, limits_new = params_limits_init.get(type(param), (values_init.get(param), None))
+            if limits_new:
+                param.limits = g2f.LimitsD(limits_new[0], limits_new[1])
+            if value_init is not None:
+                param.value = value_init
+
         for prior in model.priors:
             if isinstance(prior, g2f.GaussianPrior):
                 # TODO: Add centroid prior
                 pass
             elif isinstance(prior, g2f.ShapePrior):
                 prior.prior_size.mean_parameter.value = size_major
+
+    def validate_fit_inputs(
+        self,
+        catalog_multi: Sequence,
+        catexps: list[CatalogExposurePsfs],
+        configdata: CatalogSourceFitterConfigData = None,
+        logger: logging.Logger = None,
+        **kwargs: Any,
+    ) -> None:
+        errors = []
+        for idx, catexp in enumerate(catexps):
+            if not isinstance(catexp, CatalogExposurePsfs):
+                errors.append(f"catexps[{idx=} {type(catexp)=} !isinstance(CatalogExposurePsfs)")
 
     @utilsTimer.timeMethod
     def run(
@@ -316,18 +356,23 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
             A table with fit parameters for the PSF model at the location
             of each source.
         """
-        catexps_conv = [None] * len(catexps)
+        n_catexps = len(catexps)
+        catexps_conv: list[CatalogExposurePsfs] = [None] * n_catexps
+        channels: list[g2f.Channel] = [None] * n_catexps
         for idx, catexp in enumerate(catexps):
-            if isinstance(catexp, CatalogExposurePsfs):
-                catexps_conv[idx] = catexp
-            else:
-                catexps_conv[idx] = CatalogExposurePsfs(
+            if not isinstance(catexp, CatalogExposurePsfs):
+                catexp = CatalogExposurePsfs(
                     # dataclasses.asdict(catexp)_makes a recursive deep copy.
                     # That must be avoided.
                     **{key: getattr(catexp, key) for key in catexp.__dataclass_fields__.keys()},
                     channel=g2f.Channel.get(catexp.band),
                     config_fit=self.config,
                 )
+            catexps_conv[idx] = catexp
+            channels[idx] = catexp.channel
         self.catexps = catexps
-        catalog = self.fit(catalog_multi=catalog_multi, catexps=catexps_conv, config=self.config, **kwargs)
+        config_data = CatalogSourceFitterConfigData(channels=channels, config=self.config)
+        catalog = self.fit(
+            catalog_multi=catalog_multi, catexps=catexps_conv, config_data=config_data, **kwargs
+        )
         return pipeBase.Struct(output=astropy_to_arrow(catalog))

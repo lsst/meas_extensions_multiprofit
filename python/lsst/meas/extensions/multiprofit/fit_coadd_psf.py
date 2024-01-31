@@ -24,7 +24,7 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
 import lsst.utils.timer as utilsTimer
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
-from lsst.multiprofit.fit_psf import CatalogPsfFitter, CatalogPsfFitterConfig
+from lsst.multiprofit.fit_psf import CatalogPsfFitter, CatalogPsfFitterConfig, CatalogPsfFitterConfigData
 from lsst.pex.exceptions import InvalidParameterError
 
 from .errors import IsParentError
@@ -75,7 +75,7 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
             and hasattr(config, "fit_parents")
             and not config.fit_parents
             and (source["parent"] == 0)
-            and (source["deblend_nChild"] > 0)
+            and (source["deblend_nChild"] > 1)
         ):
             raise IsParentError(
                 f"{source['id']=} is a parent with nChild={source['deblend_nChild']}" f" and will be skipped"
@@ -118,5 +118,6 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
                 del self.config.flag_errors[is_parent_name]
                 self.config._frozen = True
 
-        catalog = self.fit(catexp=catexp, config=self.config, **kwargs)
+        config_data = CatalogPsfFitterConfigData(config=self.config)
+        catalog = self.fit(catexp=catexp, config_data=config_data, **kwargs)
         return pipeBase.Struct(output=astropy_to_arrow(catalog))

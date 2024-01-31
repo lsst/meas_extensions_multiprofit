@@ -5,9 +5,12 @@ parameters:
   # Bands to match aperture fluxes on as a fallback if model fit failed
   bands_fallback: []
   include_psflux: False
+  merge_expdev: False
   merge_psexpdev: False
   merge_psgauss: False
-  merge_sersic: False
+  merge_psser: False
+  merge_ser: False
+  merge_ser_fixedcen: False
   model_prefix: "mpf_psgauss"
   size_include: None
 tasks:
@@ -32,13 +35,28 @@ tasks:
             join_column="objectId",
             storageClass="DataFrame",
           ),
-          "deepCoadd_psser_multiprofit": InputConfig(
-            doc="Point Source + Sersic source fit",
-            action=MergeMultibandFluxes(name_model="psser"),
+        }
+        if parameters.merge_ser_fixedcen:
+          inputs["deepCoadd_ser_fixedcen_multiprofit"] = InputConfig(
+            doc="Sersic fixed centroid source fit",
+            action=MergeMultibandFluxes(name_model="ser_fixedcen"),
             column_id="id",
             is_multiband=True,
-          ),
-        }
+          )
+        if parameters.merge_expdev:
+          inputs["deepCoadd_expdev_multiprofit"] = InputConfig(
+            doc="Exponential + DeVaucouleurs source fit",
+            action=MergeMultibandFluxes(name_model="expdev"),
+            column_id="id",
+            is_multiband=True,
+          )
+        if parameters.merge_ser:
+          inputs["deepCoadd_ser_multiprofit"] = InputConfig(
+            doc="Sersic source fit",
+            action=MergeMultibandFluxes(name_model="ser"),
+            column_id="id",
+            is_multiband=True,
+          )
         if parameters.merge_psexpdev:
           inputs["deepCoadd_psexpdev_multiprofit"] = InputConfig(
             doc="Point Source + Exponential + DeVaucouleurs source fit",
@@ -53,10 +71,10 @@ tasks:
             column_id="id",
             is_multiband=True,
           )
-        if parameters.merge_sersic:
-          inputs["deepCoadd_ser_multiprofit"] = InputConfig(
-            doc="Sersic source fit",
-            action=MergeMultibandFluxes(name_model="ser"),
+        if parameters.merge_psser:
+          inputs["deepCoadd_psser_multiprofit"] = InputConfig(
+            doc="Point Source + Sersic source fit",
+            action=MergeMultibandFluxes(name_model="psser"),
             column_id="id",
             is_multiband=True,
           )
@@ -114,7 +132,7 @@ tasks:
                 columns_target_flux_err=[f"{parameters.model_prefix}_{band}_flux_err",],
             )
             if parameters.include_psflux:
-                config.columns_target_copy.append(f"{parameters.model_prefix}_ps1_{band}_flux")
+                config.columns_target_copy.append(f"{parameters.model_prefix}_ps_{band}_flux")
         if parameters.size_include:
             for ax in ("x", "y"):
                 config.columns_target_copy.append(
