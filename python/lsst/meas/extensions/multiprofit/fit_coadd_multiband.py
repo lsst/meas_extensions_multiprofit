@@ -49,19 +49,64 @@ from .errors import IsParentError, NotPrimaryError
 from .utils import get_spanned_image
 
 
+class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFitSubConfig):
+    """Configuration for the MultiProFit profile fitter."""
+
+    bands_fit = pexConfig.ListField(
+        dtype=str,
+        default=[],
+        doc="list of bandpass filters to fit",
+        listCheck=lambda x: len(set(x)) == len(x),
+    )
+    mask_names_zero = pexConfig.ListField[str](
+        doc="Mask bits to mask out",
+        default=["BAD", "EDGE", "SAT", "NO_DATA"],
+    )
+    psf_sigma_subtract = pexConfig.Field[float](
+        doc="PSF x/y sigma value to subtract in quadrature from best-fit values",
+        default=0.1,
+        check=lambda x: np.isfinite(x) and (x >= 0),
+    )
+    prefix_column = pexConfig.Field[str](default="mpf_", doc="Column name prefix")
+
+    def bands_read_only(self) -> set[str]:
+        # TODO: Re-implement determination of prior-only bands once
+        # data-driven priors are re-implemented (DM-4xxxx)
+        return set()
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.flag_errors = {
+            IsParentError.column_name(): "IsParentError",
+            NotPrimaryError.column_name(): "NotPrimaryError",
+            PsfRebuildFitFlagError.column_name(): "PsfRebuildFitFlagError",
+        }
+        self.centroid_pixel_offset = -0.5
+
+
 @dataclass(frozen=True, kw_only=True, config=fitMB.CatalogExposureConfig)
 class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC):
     """Input data from lsst pipelines, parsed for MultiProFit."""
 
     channel: g2f.Channel = pydantic.Field(title="Channel for the image's band")
-    config_fit: CatalogSourceFitterConfig = pydantic.Field(title="Channel for the image's band")
+    config_fit: MultiProFitSourceConfig = pydantic.Field(title="Config for fitting options")
 
     def get_psf_model(self, source):
         match = np.argwhere(
             (self.table_psf_fits[self.psf_model_data.config.column_id] == source[self.config_fit.column_id])
         )[0][0]
-        psf_model = self.psf_model_data.psfmodel
-        self.psf_model_data.init_psfmodel(self.table_psf_fits[match])
+        psf_model = self.psf_model_data.psf_model
+        self.psf_model_data.init_psf_model(self.table_psf_fits[match])
+
+        sigma_subtract = self.config_fit.psf_sigma_subtract
+        if sigma_subtract > 0:
+            sigma_subtract_sq = sigma_subtract * sigma_subtract
+            for param in self.psf_model_data.parameters.values():
+                if isinstance(
+                    param,
+                    g2f.SigmaXParameterD | g2f.SigmaYParameterD | g2f.ReffXParameterD | g2f.ReffYParameterD,
+                ):
+                    param.value = math.sqrt(param.value**2 - sigma_subtract_sq)
         return psf_model
 
     def get_source_observation(self, source) -> g2f.Observation:
@@ -102,34 +147,6 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         set_config_from_dict(config, config_dict)
         config_data = CatalogPsfFitterConfigData(config=config)
         object.__setattr__(self, "psf_model_data", config_data)
-
-
-class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFitSubConfig):
-    """Configuration for the MultiProFit profile fitter."""
-
-    bands_fit = pexConfig.ListField(
-        dtype=str,
-        default=[],
-        doc="list of bandpass filters to fit",
-        listCheck=lambda x: len(set(x)) == len(x),
-    )
-    mask_names_zero = pexConfig.ListField[str](
-        default=["BAD", "EDGE", "SAT", "NO_DATA"], doc="Mask bits to mask out"
-    )
-    prefix_column = pexConfig.Field[str](default="mpf_", doc="Column name prefix")
-
-    def bands_read_only(self) -> set[str]:
-        # TODO: Re-implement determination of prior-only bands once
-        # data-driven priors are re-implemented (DM-4xxxx)
-        return set()
-
-    def setDefaults(self):
-        super().setDefaults()
-        self.flag_errors = {
-            IsParentError.column_name(): "IsParentError",
-            NotPrimaryError.column_name(): "NotPrimaryError",
-            PsfRebuildFitFlagError.column_name(): "PsfRebuildFitFlagError",
-        }
 
 
 class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTask):
