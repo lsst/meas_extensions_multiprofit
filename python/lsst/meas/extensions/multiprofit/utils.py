@@ -46,6 +46,7 @@ def get_spanned_image(
     bbox: geom.Box2I | None = None,
     spans: np.ndarray | None = None,
     get_sig_inv: bool = False,
+    calibrate: bool = True,
 ) -> tuple[np.ndarray, geom.Box2I, np.ndarray]:
     """Get an image masked by its spanset.
 
@@ -64,6 +65,8 @@ def get_spanned_image(
         Defaults to the footprint's spans.
     get_sig_inv
         Whether to get the inverse variance and return its square root.
+    calibrate
+        Whether to calibrate the image; set to False if already calibrated.
 
     Returns
     -------
@@ -82,14 +85,42 @@ def get_spanned_image(
         return None, bbox
     if spans is None:
         spans = footprint.getSpans().asArray()
-    sig_inv = None
-    img = afwImage.Image(bbox, dtype="D")
-    maskedIm = exposure.photoCalib.calibrateImage(exposure.maskedImage.subset(bbox))
-    img.array[spans] = maskedIm.image.array[spans]
-    if get_sig_inv:
-        sig_inv = afwImage.Image(bbox, dtype="D").array
-        sig_inv[spans] = 1 / np.sqrt(maskedIm.variance.array[spans])
-    return img.array, bbox, sig_inv
+    sig_inv = afwImage.ImageF(bbox) if get_sig_inv else None
+    img = afwImage.ImageF(bbox)
+    img.array[:] = np.nan
+    if footprint is None:
+        maskedIm = exposure.maskedImage.subset(bbox)
+        if not calibrate:
+            img = maskedIm.image.array
+            sig_inv.array[spans] = 1 / np.sqrt(maskedIm.variance.array[spans])
+    else:
+        img.array[spans] = footprint.getImageArray()
+        if get_sig_inv:
+            # footprint.getVarianceArray() returns zeros
+            variance = exposure.variance[bbox]
+            if not calibrate:
+                sig_inv.array[spans] = 1 / np.sqrt(variance.array[spans])
+        if calibrate:
+            # Have to calibrate with the original image
+            maskedIm = afwImage.MaskedImageF(
+                image=exposure.image[bbox],
+                variance=variance if get_sig_inv else None,
+            )
+    if calibrate:
+        maskedIm = exposure.photoCalib.calibrateImage(maskedIm)
+        if footprint is None:
+            img = maskedIm.image.array
+        else:
+            # Apply the calibration to the deblended footprint
+            # ... hopefully it's multiplicative enough
+            img.array[spans] *= maskedIm.image.array[spans] / exposure.image[bbox].array[spans]
+            img = img.array
+        if get_sig_inv:
+            sig_inv.array[spans] = 1 / np.sqrt(maskedIm.variance.array[spans])
+            # Should not happen but does with footprints having nans
+            sig_inv.array[~(sig_inv.array >= 0)] = 0
+
+    return np.array(img, dtype="float64"), bbox, np.array(sig_inv.array, dtype="float64")
 
 
 def join_and_filter(separator: str, items: Iterable[str], exclusion: str | None = None) -> str:

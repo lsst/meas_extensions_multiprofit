@@ -109,11 +109,14 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
                     param.value = math.sqrt(param.value**2 - sigma_subtract_sq)
         return psf_model
 
-    def get_source_observation(self, source) -> g2f.Observation:
-        if (not source["detect_isPrimary"]) or source["merge_peak_sky"]:
-            raise NotPrimaryError(f"source {source[self.config_fit.column_id]} has invalid flags for fit")
+    def get_source_observation(self, source, **kwargs) -> g2f.Observation:
+        if not kwargs.get("skip_flags"):
+            if (not source["detect_isPrimary"]) or source["merge_peak_sky"]:
+                raise NotPrimaryError(f"source {source[self.config_fit.column_id]} has invalid flags for fit")
         footprint = source.getFootprint()
         bbox = footprint.getBBox()
+        if not (bbox.getArea() > 0):
+            return None
         bitmask = 0
         mask = self.exposure.mask[bbox]
         spans = footprint.spans.asArray()
@@ -122,15 +125,44 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
             bitmask |= bitval
         mask = ((mask.array & bitmask) != 0) & (spans != 0)
         mask = ~mask
+
+        is_deblended_child = source["parent"] != 0
+
         img, _, sigma_inv = get_spanned_image(
             exposure=self.exposure,
+            footprint=footprint if is_deblended_child else None,
             bbox=bbox,
             spans=spans,
             get_sig_inv=True,
         )
+        x_min_bbox, y_min_bbox = bbox.beginX, bbox.beginY
+        # Crop to tighter box for deblended model if edges are unusable
+        # ... this rarely ever seems to happen though
+        if is_deblended_child:
+            coords = np.argwhere(np.isfinite(img) & (sigma_inv > 0) & np.isfinite(sigma_inv))
+            x_min, y_min = coords.min(axis=0)
+            x_max, y_max = coords.max(axis=0)
+            x_max += 1
+            y_max += 1
+
+            if (x_min > 0) or (y_min > 0) or (x_max < img.shape[0]) or (y_max < img.shape[1]):
+                # Ensure the nominal centroid is still inside the box
+                # ... although it's a bad sign if that row/column is all bad
+                x_cen = source["slot_Centroid_x"] - x_min_bbox
+                y_cen = source["slot_Centroid_y"] - y_min_bbox
+                x_min = min(x_min, int(np.floor(x_cen)))
+                x_max = max(x_max, int(np.ceil(x_cen)))
+                y_min = min(y_min, int(np.floor(y_cen)))
+                y_max = max(y_max, int(np.ceil(y_cen)))
+                x_min_bbox += x_min
+                y_min_bbox += y_min
+                img = img[x_min:x_max, y_min:y_max]
+                sigma_inv = sigma_inv[x_min:x_max, y_min:y_max]
+                mask = mask[x_min:x_max, y_min:y_max]
+
         sigma_inv[~mask] = 0
 
-        coordsys = g2.CoordinateSystem(1.0, 1.0, bbox.beginX, bbox.beginY)
+        coordsys = g2.CoordinateSystem(1.0, 1.0, x_min_bbox, y_min_bbox)
 
         obs = g2f.Observation(
             image=g2.ImageD(img, coordsys),
@@ -205,7 +237,13 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         catexps: list[CatalogExposureSourcesABC],
         values_init: Mapping[g2f.ParameterD, float] | None = None,
         centroid_pixel_offset: float = 0,
+        **kwargs,
     ):
+        if values_init is None:
+            values_init = {}
+        set_flux_limits = kwargs.pop("set_flux_limits") if "set_flux_limits" in kwargs else True
+        if kwargs:
+            raise ValueError(f"Unexpected {kwargs=}")
         sig_x = math.sqrt(source["slot_Shape_xx"])
         sig_y = math.sqrt(source["slot_Shape_yy"])
         # TODO: Verify if there's a sign difference here
@@ -248,11 +286,12 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
                     flux_init = row["slot_PsfFlux_instFlux"]
 
             calib = catexp.exposure.photoCalib
-            flux_init = (
-                calib.instFluxToNanojansky(flux_init) if (flux_init > 0) else max(flux_total, 1.0)
-            )
-            flux_max = 10 * max((flux_init, flux_total))
-            flux_min = min(1e-12, flux_max / 1000)
+            flux_init = calib.instFluxToNanojansky(flux_init) if (flux_init > 0) else max(flux_total, 1.0)
+            if set_flux_limits:
+                flux_max = 10 * max((flux_init, flux_total))
+                flux_min = min(1e-12, flux_max / 1000)
+            else:
+                flux_min, flux_max = 0, np.Inf
             fluxes_init.append(flux_init / n_components)
             fluxes_limits.append((flux_min, flux_max))
 
