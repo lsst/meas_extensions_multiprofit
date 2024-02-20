@@ -88,7 +88,6 @@ tasks:
         from lsst.pipe.tasks.match_tract_catalog_probabilistic import MatchTractCatalogProbabilisticTask
         config.match_tract_catalog.retarget(MatchTractCatalogProbabilisticTask)
 
-        print(f"{parameters.bands_match=}")
         fluxes_ref = [
           f"flux_{band}" for bands in (parameters.bands_match, parameters.bands_fallback) for band in bands
         ]
@@ -124,7 +123,11 @@ tasks:
         from lsst.pipe.tasks.diff_matched_tract_catalog import MatchedCatalogFluxesConfig
 
         columns_flux = {}
-        config.columns_target_copy = ["objectId", "patch"]
+        config.columns_target_copy = [
+          "objectId", "patch",
+          f"{parameters.model_prefix}_cen_x", f"{parameters.model_prefix}_cen_y",
+          f"{parameters.model_prefix}_cen_x_err", f"{parameters.model_prefix}_cen_y_err",
+        ]
         for band in parameters.bands_match:
             columns_flux[band] = MatchedCatalogFluxesConfig(
                 column_ref_flux=f"flux_{band}",
