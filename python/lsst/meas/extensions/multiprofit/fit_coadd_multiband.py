@@ -375,6 +375,16 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
             elif isinstance(prior, g2f.ShapePrior):
                 prior.prior_size.mean_parameter.value = size_major
 
+    def make_CatalogExposurePsfs(self, catexp: fitMB.CatalogExposureInputs) -> CatalogExposurePsfs:
+        catexp_psf = CatalogExposurePsfs(
+            # dataclasses.asdict(catexp)_makes a recursive deep copy.
+            # That must be avoided.
+            **{key: getattr(catexp, key) for key in catexp.__dataclass_fields__.keys()},
+            channel=g2f.Channel.get(catexp.band),
+            config_fit=self.config,
+        )
+        return catexp_psf
+
     def validate_fit_inputs(
         self,
         catalog_multi: Sequence,
@@ -417,13 +427,7 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         channels: list[g2f.Channel] = [None] * n_catexps
         for idx, catexp in enumerate(catexps):
             if not isinstance(catexp, CatalogExposurePsfs):
-                catexp = CatalogExposurePsfs(
-                    # dataclasses.asdict(catexp)_makes a recursive deep copy.
-                    # That must be avoided.
-                    **{key: getattr(catexp, key) for key in catexp.__dataclass_fields__.keys()},
-                    channel=g2f.Channel.get(catexp.band),
-                    config_fit=self.config,
-                )
+                catexp = self.make_CatalogExposurePsfs(catexp)
             catexps_conv[idx] = catexp
             channels[idx] = catexp.channel
         self.catexps = catexps
