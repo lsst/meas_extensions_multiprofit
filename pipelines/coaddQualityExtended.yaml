@@ -1,0 +1,45 @@
+description: |
+  Tier2 atools and metrics to assess coadd quality
+tasks:
+  analyzeObjectTableExtended:
+    class: lsst.analysis.tools.tasks.ObjectTableTractAnalysisTask
+    config:
+      connections.data: objectTable_tract_multiprofit
+      connections.outputName: objectTableMultiprofitExtended
+      # set plots to run
+      atools.serReffVsMag: SizeMagnitudePlot
+      atools.serReffVsMag.fluxes_default.cmodel_err: model_ser
+      atools.serReffVsMag.sizes_default.shape_slot: sizes_ser
+      atools.serReffVsMag.config_moments: moments_ser
+      atools.serReffVsMag.size_type: "determinantRadius"
+      atools.serReffVsMag.mag_x: "cmodel_err"
+      atools.serReffVsMag.size_y: "shape_slot"
+      atools.serReffVsMag.is_covariance: False
+      atools.serReffVsMag.applyContext: CoaddContext
+      atools.serReffVsMag.prep.selectors.flagSelector.selectWhenFalse: flags_ser
+      atools.serReffVsMag.prep.selectors.flagSelector.selectWhenTrue: []
+      atools.serReffVsMag.produce.plot.xLims: (17, 29)
+      atools.serReffVsMag.produce.plot.yLims: (-4, 3)
+      python: |
+        from lsst.analysis.tools.atools import *
+        from lsst.analysis.tools.contexts import *
+        from lsst.analysis.tools.atools.genericBuild import FluxConfig, MomentsConfig, SizeConfig
+
+        models_mag = {}
+        flags_model = {}
+        for name_model, label_model in (("ser", "MPF Ser"), ("expdev", "MPF Exp+Dev")):
+          models_mag[name_model] = FluxConfig(
+            key_flux = f"mpf_{name_model}_ser_{{band}}_flux",
+            key_flux_error = f"mpf_{name_model}_ser_{{band}}_flux_err",
+            name_flux = label_model,
+          )
+          flags_model[name_model] = [
+            'mpf_ser_fixedcen_unknown_flag',
+            'mpf_ser_fixedcen_is_parent_flag',
+            'mpf_ser_fixedcen_not_primary_flag',
+            'mpf_ser_fixedcen_psf_fit_flag',
+          ]
+        flags_ser = flags_model["ser"]
+        model_ser = models_mag["ser"]
+        sizes_ser = SizeConfig(key_size="mpf_ser_ser_{suffix}", name_size="Sersic $R_{eff}$")
+        moments_ser = MomentsConfig(xx="reff_x", yy="reff_y", xy="rho")
