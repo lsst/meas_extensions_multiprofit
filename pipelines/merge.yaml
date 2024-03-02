@@ -29,7 +29,8 @@ tasks:
           ),
           "objectTable_tract": InputConfig(
             doc="Merged object table",
-            columns=["objectId", "refExtendedness"],  # objectId is needed for inner join
+            # objectId is needed for inner join
+            columns=["objectId", "refExtendedness", "detect_isPatchInner"],
             is_multiband=True,
             is_multipatch=True,
             join_column="objectId",
