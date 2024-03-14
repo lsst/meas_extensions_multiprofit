@@ -103,7 +103,26 @@ class InputConfig(pexConfig.Config):
     column_id = pexConfig.Field[str](doc="ID column to merge", optional=False, default="objectId")
     is_multiband = pexConfig.Field[bool](doc="Whether the dataset is multiband or not", default=False)
     is_multipatch = pexConfig.Field[bool](doc="Whether the dataset is multipatch or not", default=False)
+    join_column = pexConfig.Field[str](
+        doc="Column to join on if unequal length instead of stacking", default=None, optional=True
+    )
     storageClass = pexConfig.Field[str](doc="Storage class for DatasetType", default="ArrowAstropy")
+
+    def get_connection(self, name: str) -> connectionTypes.Input:
+        dimensions = ["skymap", "tract"]
+        if not self.is_multipatch:
+            dimensions.append("patch")
+        if not self.is_multiband:
+            dimensions.append("band")
+        connection = connectionTypes.Input(
+            doc=self.doc,
+            name=name,
+            storageClass=self.storageClass,
+            dimensions=dimensions,
+            multiple=not (self.is_multiband and self.is_multipatch),
+            deferLoad=self.columns is not None,
+        )
+        return connection
 
 
 class ConsolidateAstropyTableConfigBase(pexConfig.Config):
@@ -133,23 +152,11 @@ class ConsolidateAstropyTableConnections(
 
     def __init__(self, *, config: ConsolidateAstropyTableConfigBase):
         for name, config_input in config.inputs.items():
-            dimensions = ["skymap", "tract"]
-            if not config_input.is_multipatch:
-                dimensions.append("patch")
-            if not config_input.is_multiband:
-                dimensions.append("band")
-            connection = connectionTypes.Input(
-                doc=config_input.doc,
-                name=name,
-                storageClass=config_input.storageClass,
-                dimensions=dimensions,
-                multiple=not config_input.is_multiband,
-                deferLoad=config_input.columns is not None,
-            )
             if hasattr(self, name):
                 raise ValueError(
                     f"{config_input=} {name=} is invalid, due to being an existing attribute" f" of {self=}"
                 )
+            connection = config_input.get_connection(name)
             setattr(self, name, connection)
 
 
@@ -159,6 +166,16 @@ class ConsolidateAstropyTableConfig(
     pipelineConnections=ConsolidateAstropyTableConnections,
 ):
     """PipelineTaskConfig for ConsolidateAstropyTableTask."""
+
+    join_type = pexConfig.ChoiceField[str](
+        doc="Type of join to perform in the final hstack",
+        allowed={
+            "inner": "Inner join",
+            "outer": "Outer join",
+        },
+        default="inner",
+        optional=False,
+    )
 
 
 class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
@@ -195,7 +212,7 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                     columns = tuple(data_in.columns)
 
                 if inputConfig.storageClass == "DataFrame":
-                    data_in = apTab.Table.from_pandas(data_in)
+                    data_in = apTab.Table.from_pandas(data_in.reset_index(drop=False))
                 elif inputConfig.storageClass == "ArrowAstropy":
                     data_in.meta = {name: data_in.meta}
 
@@ -264,6 +281,19 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                 for patch in (patches_ref if not config_input.is_multipatch else patches_null)
             ]
             data[name] = tables[0] if (len(tables) == 1) else apTab.vstack(tables, join_type="exact")
-        table = apTab.hstack([data[name] for name in self.config.inputs])
+        # This will break if all tables have config.join_column
+        # ... but that seems unlikely.
+        table = apTab.hstack(
+            [data[name] for name, config in self.config.inputs.items() if config.join_column is None],
+            join_type=self.config.join_type,
+        )
+        for name, config in self.config.inputs.items():
+            if config.join_column:
+                table = apTab.join(
+                    table,
+                    data[name],
+                    join_type=self.config.join_type,
+                    keys=config.join_column,
+                )
 
         butlerQC.put(pipeBase.Struct(cat_output=table), outputRefs)

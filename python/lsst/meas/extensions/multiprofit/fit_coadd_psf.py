@@ -24,19 +24,16 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
 import lsst.utils.timer as utilsTimer
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
-from lsst.multiprofit.fit_psf import CatalogExposurePsfABC, CatalogPsfFitter, CatalogPsfFitterConfig
+from lsst.multiprofit.fit_psf import CatalogPsfFitter, CatalogPsfFitterConfig, CatalogPsfFitterConfigData
 from lsst.pex.exceptions import InvalidParameterError
-from pydantic.dataclasses import dataclass
 
-
-@dataclass(frozen=True, kw_only=True, config=fitCP.CatalogExposureConfig)
-class CatalogExposure(fitCP.CatalogExposurePsf, CatalogExposurePsfABC):
-    """A CatalogExposure for PSF fitting."""
+from .errors import IsParentError
 
 
 class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
     """Configuration for the MultiProFit Gaussian mixture PSF fitter."""
 
+    fit_parents = pexConfig.Field[bool](default=False, doc="Whether to fit parent object PSFs")
     prefix_column = pexConfig.Field[str](default="mpf_psf_", doc="Column name prefix")
 
     def setDefaults(self):
@@ -72,17 +69,29 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
         CatalogPsfFitter.__init__(self, errors_expected=errors_expected)
         fitCP.CoaddPsfFitSubTask.__init__(self, **kwargs)
 
+    def check_source(self, source, config):
+        if (
+            config
+            and hasattr(config, "fit_parents")
+            and not config.fit_parents
+            and (source["parent"] == 0)
+            and (source["deblend_nChild"] > 1)
+        ):
+            raise IsParentError(
+                f"{source['id']=} is a parent with nChild={source['deblend_nChild']}" f" and will be skipped"
+            )
+
     @utilsTimer.timeMethod
     def run(
         self,
-        catexp: CatalogExposure,
+        catexp: fitCP.CatalogExposurePsf,
         **kwargs,
     ) -> pipeBase.Struct:
         """Run the MultiProFit PSF task on a catalog-exposure pair.
 
         Parameters
         ----------
-        catexp : `CatalogExposure`
+        catexp
             An exposure to fit a model PSF at the position of all
             sources in the corresponding catalog.
         **kwargs
@@ -90,9 +99,25 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
 
         Returns
         -------
-        catalog : `astropy.Table`
+        catalog
             A table with fit parameters for the PSF model at the location
             of each source.
         """
-        catalog = self.fit(catexp=catexp, config=self.config, **kwargs)
+        is_parent_name = IsParentError.column_name()
+        if not self.config.fit_parents:
+            if is_parent_name not in self.errors_expected:
+                self.errors_expected[IsParentError] = is_parent_name
+            if "IsParentError" not in self.config.flag_errors.values():
+                self.config._frozen = False
+                self.config.flag_errors[is_parent_name] = "IsParentError"
+                self.config._frozen = True
+        elif is_parent_name in self.errors_expected:
+            del self.errors_expected[is_parent_name]
+            if is_parent_name in self.config.flag_errors.keys():
+                self.config._frozen = False
+                del self.config.flag_errors[is_parent_name]
+                self.config._frozen = True
+
+        config_data = CatalogPsfFitterConfigData(config=self.config)
+        catalog = self.fit(catexp=catexp, config_data=config_data, **kwargs)
         return pipeBase.Struct(output=astropy_to_arrow(catalog))
