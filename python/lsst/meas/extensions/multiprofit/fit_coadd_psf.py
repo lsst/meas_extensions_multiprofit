@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import gauss2d.fit as g2f
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
@@ -34,6 +35,11 @@ class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
     """Configuration for the MultiProFit Gaussian mixture PSF fitter."""
 
     fit_parents = pexConfig.Field[bool](default=False, doc="Whether to fit parent object PSFs")
+    initialize_ellipses = pexConfig.Field[bool](
+        default=True,
+        doc="Whether to initializes the ellipse parameters from the model config; if False, they "
+        "will remain at the best-fit values for the previous source's PSF",
+    )
     prefix_column = pexConfig.Field[str](default="mpf_psf_", doc="Column name prefix")
 
     def setDefaults(self):
@@ -80,6 +86,53 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
             raise IsParentError(
                 f"{source['id']=} is a parent with nChild={source['deblend_nChild']}" f" and will be skipped"
             )
+
+    def initialize_model(
+        self,
+        model: g2f.Model,
+        config_data: CatalogPsfFitterConfigData,
+        limits_x: g2f.LimitsD = None,
+        limits_y: g2f.LimitsD = None,
+    ) -> None:
+        """Initialize a Model for a single source row.
+
+        Parameters
+        ----------
+        model
+            The model object to initialize.
+        config_data
+            The fitter config with cached data.
+        limits_x
+            Hard limits for the source's x centroid.
+        limits_y
+            Hard limits for the source's y centroid.
+        """
+        n_rows, n_cols = model.data[0].image.data.shape
+        cen_x, cen_y = n_cols / 2.0, n_rows / 2.0
+        centroids = set()
+        if limits_x is None:
+            limits_x = g2f.LimitsD(0, n_cols)
+        if limits_y is None:
+            limits_y = g2f.LimitsD(0, n_rows)
+
+        for component, config_comp in zip(
+            config_data.components.values(), config_data.component_configs.values()
+        ):
+            centroid = component.centroid
+            if centroid not in centroids:
+                centroid.x_param.value = cen_x
+                centroid.x_param.limits = limits_x
+                centroid.y_param.value = cen_y
+                centroid.y_param.limits = limits_y
+                centroids.add(centroid)
+
+            if self.config.initialize_ellipses:
+                ellipse = component.ellipse
+                ellipse.size_x_param.limits = limits_x
+                ellipse.size_x = config_comp.size_x.value_initial
+                ellipse.size_y_param.limits = limits_y
+                ellipse.size_y = config_comp.size_y.value_initial
+                ellipse.rho = config_comp.rho.value_initial
 
     @utilsTimer.timeMethod
     def run(
