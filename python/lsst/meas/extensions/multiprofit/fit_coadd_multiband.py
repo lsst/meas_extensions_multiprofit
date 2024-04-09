@@ -21,7 +21,8 @@
 
 import logging
 import math
-from typing import Any, Mapping, Sequence
+from functools import cached_property
+from typing import Any, Iterable, Mapping, Sequence
 
 import gauss2d as g2
 import gauss2d.fit as g2f
@@ -34,7 +35,7 @@ import pydantic
 from astropy.table import Table
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 from lsst.multiprofit.config import set_config_from_dict
-from lsst.multiprofit.errors import PsfRebuildFitFlagError
+from lsst.multiprofit.errors import NoDataError, PsfRebuildFitFlagError
 from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig, CatalogPsfFitterConfigData
 from lsst.multiprofit.fit_source import (
     CatalogExposureSourcesABC,
@@ -43,20 +44,158 @@ from lsst.multiprofit.fit_source import (
     CatalogSourceFitterConfigData,
 )
 from lsst.multiprofit.utils import get_params_uniq
+from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
 from pydantic.dataclasses import dataclass
 
 from .errors import IsParentError, NotPrimaryError
 from .utils import get_spanned_image
 
+TWO_SQRT_PI = 2 * math.sqrt(np.pi)
+
+
+class PsfFitSuccessActionBase(ConfigurableAction):
+    """Base action to return whether a source had a succesful PSF fit."""
+
+    def get_schema(self) -> list[str]:
+        """Return the list of columns required to call this action."""
+        raise NotImplementedError("This method must be overloaded in subclasses")
+
+    def __call__(self, source: Mapping[str, Any], *args: Any, **kwargs: Any) -> bool:
+        raise NotImplementedError("This method must be overloaded in subclasses")
+
+
+class PsfComponentsActionBase(ConfigurableAction):
+    """Base action to return a list of Gaussians from a source mapping."""
+
+    def get_schema(self) -> list[str]:
+        """Return the list of columns required to call this action."""
+        raise NotImplementedError("This method must be overloaded in subclasses")
+
+    def __call__(self, source: Mapping[str, Any], *args: Any, **kwargs: Any) -> list[g2.Gaussian]:
+        raise NotImplementedError("This method must be overloaded in subclasses")
+
+
+class SourceTablePsfFitSuccessAction(PsfFitSuccessActionBase):
+    """Action to return PSF fit status from a SourceTable row."""
+
+    flag_format = pexConfig.Field[str](
+        doc="Format for the flag field; flag_prefix, flag_suffix and flag_sub are substituted",
+        default="{flag_prefix}{flag_suffix}{flag_sub}",
+    )
+    flag_prefix = pexConfig.Field[str](
+        doc="Prefix for the key for the summed flag field",
+        default="modelfit_DoubleShapeletPsfApprox",
+    )
+    flag_suffix = pexConfig.Field[str](
+        doc="Suffix for all flag fields",
+        default="_flag",
+    )
+    flags_sub = pexConfig.ListField[str](
+        doc="Suffixes for specific flag fields that must not be true",
+        default=["_invalidPointForPsf", "_invalidMoments", "_maxIterations"],
+    )
+
+    def _format(self, flag_sub: str) -> str:
+        return self.flag_format.format(
+            flag_prefix=self.flag_prefix,
+            flag_sub=flag_sub,
+            flag_suffix=self.flag_suffix,
+        )
+
+    def get_schema(self) -> Iterable[str]:
+        for flag_sub in self.flags_sub:
+            yield self._format(flag_sub=flag_sub)
+
+    def __call__(self, source: Mapping[str, Any], *args: Any, **kwargs: Any) -> bool:
+        good = True
+        for flag_sub in self.flags_sub:
+            good &= not source[self._format(flag_sub=flag_sub)]
+        return good
+
+
+class SourceTablePsfComponentsAction(PsfComponentsActionBase):
+    """Action to return PSF components from a SourceTable.
+
+    This is anticipated to be a deepCoadd_meas with PSF fit parameters from a
+    measurement plugin returning covariance matrix terms.
+    """
+
+    action_source = ConfigurableActionField[PsfFitSuccessActionBase](
+        doc="Action to return whether the PSF fit was successful for a single source row",
+        default=SourceTablePsfFitSuccessAction,
+    )
+    format = pexConfig.Field[str](
+        doc="Format for the field names, where {idx_comp} is the index of the component and {moment}"
+        "is the name of the moment (xx, xy or yy, integral)",
+        default="modelfit_DoubleShapeletPsfApprox_{idx_comp}_{moment}",
+    )
+    name_moment_xx = pexConfig.Field[str](doc="Name of the xx (2nd x-axis) moment", default="xx")
+    name_moment_xy = pexConfig.Field[str](doc="Name of the xy (covariance term) moment", default="xy")
+    name_moment_yy = pexConfig.Field[str](doc="Name of the yy (2nd y-axis) moment", default="yy")
+    name_moment_integral = pexConfig.Field[str](doc="Name of the integral (zeroth) moment", default="0")
+    n_components = pexConfig.Field[int](
+        doc="Number of Gaussian components",
+        default=2,
+        check=lambda x: x >= 2,
+    )
+
+    def get_integral(self, moment_integral) -> float:
+        return moment_integral * TWO_SQRT_PI
+
+    def get_schema(self) -> list[str]:
+        names_moments = (
+            self.name_moment_xx,
+            self.name_moment_yy,
+            self.name_moment_xy,
+            self.name_moment_integral,
+        )
+        columns = [
+            column
+            for idx_comp in range(self.n_components)
+            for column in (
+                self.format.format(name_moment=name_moment, idx_comp=idx_comp)
+                for name_moment in names_moments
+            )
+        ] + self.action_source.get_schema()
+        return columns
+
+    def __call__(self, source: Mapping[str, Any], *args: Any, **kwargs: Any) -> list[g2.Gaussian]:
+        if not self.action_source(source):
+            raise PsfRebuildFitFlagError(
+                f"PSF fit failed due to action based on schema: {self.action_source.get_schema()}"
+            )
+        gaussians = [None] * self.n_components
+        for idx_comp in range(self.n_components):
+            gaussian = g2.Gaussian(
+                ellipse=g2.Ellipse(
+                    g2.Covariance(
+                        sigma_x_sq=source[self.format.format(moment=self.name_moment_xx, idx_comp=idx_comp)],
+                        sigma_y_sq=source[self.format.format(moment=self.name_moment_yy, idx_comp=idx_comp)],
+                        cov_xy=source[self.format.format(moment=self.name_moment_xy, idx_comp=idx_comp)],
+                    )
+                ),
+                integral=g2.GaussianIntegralValue(
+                    value=self.get_integral(
+                        source[self.format.format(moment=self.name_moment_integral, idx_comp=idx_comp)]
+                    )
+                ),
+            )
+            gaussians[idx_comp] = gaussian
+        return gaussians
+
 
 class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFitSubConfig):
     """Configuration for the MultiProFit profile fitter."""
 
+    action_psf = ConfigurableActionField[PsfComponentsActionBase](
+        doc="The action to return PSF component values from catalogs, if implemented",
+        default=None,
+    )
     bands_fit = pexConfig.ListField(
         dtype=str,
         default=[],
         doc="list of bandpass filters to fit",
-        listCheck=lambda x: len(set(x)) == len(x),
+        listCheck=lambda x: (len(x) > 0) and (len(set(x)) == len(x)),
     )
     mask_names_zero = pexConfig.ListField[str](
         doc="Mask bits to mask out",
@@ -74,10 +213,14 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         # data-driven priors are re-implemented (DM-4xxxx)
         return set()
 
+    def requires_psf(self):
+        return type(self.action_psf) is PsfComponentsActionBase
+
     def setDefaults(self):
         super().setDefaults()
         self.flag_errors = {
             IsParentError.column_name(): "IsParentError",
+            NoDataError.column_name(): "NoDataError",
             NotPrimaryError.column_name(): "NotPrimaryError",
             PsfRebuildFitFlagError.column_name(): "PsfRebuildFitFlagError",
         }
@@ -91,12 +234,79 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
     channel: g2f.Channel = pydantic.Field(title="Channel for the image's band")
     config_fit: MultiProFitSourceConfig = pydantic.Field(title="Config for fitting options")
 
-    def get_psf_model(self, source):
-        match = np.argwhere(
-            (self.table_psf_fits[self.psf_model_data.config.column_id] == source[self.config_fit.column_id])
-        )[0][0]
+    @cached_property
+    def _psf_flux_params(self) -> tuple[list[g2f.ParameterD], bool]:
         psf_model = self.psf_model_data.psf_model
-        self.psf_model_data.init_psf_model(self.table_psf_fits[match])
+        n_comps = len(psf_model.components)
+        params_flux = [None] * n_comps
+        is_frac = [False] * n_comps
+        for idx_comp, comp in enumerate(psf_model.components):
+            # TODO: Change to comp.integralmodel when DM-44344 is fixed
+            # integralmodels will still need to be handled differently
+            params_all = get_params_uniq(comp)
+            params_frac = [param for param in params_all if isinstance(param, g2f.ProperFractionParameterD)]
+            if params_frac:
+                is_last = idx_comp == (n_comps - 1)
+                if len(params_frac) != (idx_comp + 1 - is_last):
+                    raise RuntimeError(
+                        f"Got unexpected {params_frac=} for"
+                        f" {self.psf_model_data.psf_model.components[idx_comp]=} ({idx_comp=});"
+                        f" len should be idx_comp+1"
+                    )
+                params_flux[idx_comp] = None if is_last else params_frac[idx_comp]
+                is_frac[idx_comp] = True
+            else:
+                params_integral = [param for param in params_all if isinstance(param, g2f.IntegralParameterD)]
+                if len(params_integral != 1):
+                    raise RuntimeError(
+                        f"Got unexpected {params_integral=} != 1 for"
+                        f" {self.psf_model_data.psf_model.components[idx_comp]=} ({idx_comp=})"
+                    )
+                params_flux[idx_comp] = params_integral[0]
+        is_frac_any = any(is_frac)
+        if is_frac_any and not all(is_frac):
+            # TODO: This should work by iterating through componentgroups
+            # But that's not trivial or supported now
+            raise RuntimeError("Got PSF model with a mix of fractional and linear models; cannot initialize")
+
+        return params_flux, is_frac_any
+
+    def get_psf_model(self, source):
+        psf_model = self.psf_model_data.psf_model
+        # PsfComponentsActionBase is an abstract class, so check if the action
+        # is a subclass that needs to be called
+        if not self.config_fit.requires_psf():
+            try:
+                gaussians = self.config_fit.action_psf(source)
+            except PsfRebuildFitFlagError:
+                return None
+            n_comps = len(psf_model.components)
+            fluxes = [0.0] * n_comps
+            params_flux, is_frac = self._psf_flux_params
+            for idx_comp, (comp, gaussian) in enumerate(zip(psf_model.components, gaussians)):
+                ellipse_out = comp.ellipse
+                ellipse_in = gaussian.ellipse
+                ellipse_out.sigma_x = ellipse_in.sigma_x
+                ellipse_out.sigma_y = ellipse_in.sigma_y
+                ellipse_out.rho = ellipse_in.rho
+                fluxes[idx_comp] = gaussian.integral.value
+            flux_total = sum(fluxes)
+            if is_frac:
+                flux_remaining = 1.0
+                for flux, param_frac in zip(fluxes, params_flux[:-1]):
+                    flux_component = flux / flux_total
+                    param_frac.value = flux_component / flux_remaining
+                    flux_remaining -= flux_component
+            else:
+                for flux, param_flux in zip(fluxes, params_flux):
+                    param_flux.value = flux / flux_total
+        else:
+            # TODO: this should probably use .index or something
+            match = np.argwhere(
+                self.table_psf_fits[self.psf_model_data.config.column_id] == source[self.config_fit.column_id]
+            )[0][0]
+            psf_model = self.psf_model_data.psf_model
+            self.psf_model_data.init_psf_model(self.table_psf_fits[match])
 
         sigma_subtract = self.config_fit.psf_sigma_subtract
         if sigma_subtract > 0:
@@ -173,10 +383,15 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         return obs
 
     def __post_init__(self):
-        config_dict = self.table_psf_fits.meta["config"]
         # TODO: Can/should this be the derived type (MultiProFitPsfConfig)?
         config = CatalogPsfFitterConfig()
-        set_config_from_dict(config, config_dict)
+        config_dict = self.table_psf_fits.meta.get("config")
+        if config_dict:
+            set_config_from_dict(config, config_dict)
+        else:
+            # TODO: How should this be set?
+            # If using external PSF fits, it needs to be configured normally
+            pass
         config_data = CatalogPsfFitterConfigData(config=config)
         object.__setattr__(self, "psf_model_data", config_data)
 
@@ -204,7 +419,10 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
 
     def __init__(self, **kwargs: Any):
         errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
-        for error_catalog in (IsParentError, NotPrimaryError, PsfRebuildFitFlagError):
+        # This ensures that all of these errors are caught as expected, but...
+        # It means you can't turn them off even when specifying errors_expected
+        # If there is a use case to disable any of them, this can be changed
+        for error_catalog in (IsParentError, NoDataError, NotPrimaryError, PsfRebuildFitFlagError):
             if error_catalog not in errors_expected:
                 errors_expected[error_catalog] = error_catalog.column_name()
         CatalogSourceFitterABC.__init__(self, errors_expected=errors_expected)
@@ -385,19 +603,6 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         )
         return catexp_psf
 
-    def validate_fit_inputs(
-        self,
-        catalog_multi: Sequence,
-        catexps: list[CatalogExposurePsfs],
-        configdata: CatalogSourceFitterConfigData = None,
-        logger: logging.Logger = None,
-        **kwargs: Any,
-    ) -> None:
-        errors = []
-        for idx, catexp in enumerate(catexps):
-            if not isinstance(catexp, CatalogExposurePsfs):
-                errors.append(f"catexps[{idx=} {type(catexp)=} !isinstance(CatalogExposurePsfs)")
-
     @utilsTimer.timeMethod
     def run(
         self,
@@ -436,3 +641,18 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
             catalog_multi=catalog_multi, catexps=catexps_conv, config_data=config_data, **kwargs
         )
         return pipeBase.Struct(output=astropy_to_arrow(catalog))
+
+    def validate_fit_inputs(
+        self,
+        catalog_multi: Sequence,
+        catexps: list[CatalogExposurePsfs],
+        config_data: CatalogSourceFitterConfigData = None,
+        logger: logging.Logger = None,
+        **kwargs: Any,
+    ) -> None:
+        errors = []
+        for idx, catexp in enumerate(catexps):
+            if not isinstance(catexp, CatalogExposurePsfs):
+                errors.append(f"catexps[{idx=} {type(catexp)=} !isinstance(CatalogExposurePsfs)")
+        if errors:
+            raise RuntimeError("\n".join(errors))

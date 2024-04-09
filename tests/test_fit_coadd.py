@@ -26,6 +26,7 @@ import lsst.meas.extensions.multiprofit.fit_coadd_multiband as fitCMB
 import lsst.meas.extensions.multiprofit.fit_coadd_psf as fitCP
 import numpy as np
 import pytest
+from astropy.table import Table
 from lsst.afw.image import ExposureF
 from lsst.afw.table import SourceCatalog
 from lsst.daf.butler.formatters.parquet import arrow_to_astropy
@@ -36,6 +37,7 @@ from lsst.multiprofit.componentconfig import (
     SersicComponentConfig,
     SersicIndexParameterConfig,
 )
+from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig
 from lsst.multiprofit.modelconfig import ModelConfig
 from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
 from lsst.pipe.tasks.fit_coadd_psf import CatalogExposurePsf
@@ -214,6 +216,47 @@ def source_fit_ser_results(catalog, exposure, psf_fit_results, psf_fit_config, s
     return results.output.to_pandas()
 
 
+@pytest.fixture(scope="module")
+def source_fit_ser_shapelet_psf_results(
+    catalog,
+    exposure,
+    psf_fit_results,
+    psf_fit_config,
+    source_fit_ser_config,
+):
+    if not has_files:
+        return None
+    table_psf = Table(
+        meta=dict(config=CatalogPsfFitterConfig().toDict()),
+    )
+    catexp = fitCMB.CatalogExposurePsfs(
+        dataId=dataId,
+        catalog=catalog,
+        exposure=exposure,
+        table_psf_fits=table_psf,
+        channel=channel,
+        config_fit=source_fit_ser_config,
+    )
+    source_fit_ser_config.action_psf = fitCMB.SourceTablePsfComponentsAction()
+    task = fitCMB.MultiProFitSourceTask(config=source_fit_ser_config)
+    results = task.run(catalog_multi=catalog, catexps=[catexp])
+    source_fit_ser_config.action_psf = fitCMB.PsfComponentsAction
+    return results.output.to_pandas()
+
+
+@pytest.fixture(scope="module")
+def source_fits_all(
+    source_fit_exp_fixedcen_results,
+    source_fit_ser_results,
+    source_fit_ser_shapelet_psf_results,
+):
+    return (
+        source_fit_exp_fixedcen_results,
+        source_fit_ser_results,
+        source_fit_ser_shapelet_psf_results,
+    )
+
+
 def test_psf_fits(psf_fit_results):
     if psf_fit_results is not None:
         assert len(psf_fit_results) == n_test
@@ -222,8 +265,8 @@ def test_psf_fits(psf_fit_results):
         # TODO: Determine what checks can be done against previous values
 
 
-def test_source_fits(source_fit_exp_fixedcen_results, source_fit_ser_results):
-    for results in (source_fit_exp_fixedcen_results, source_fit_ser_results):
+def test_source_fits(source_fits_all):
+    for results in source_fits_all:
         if results is not None:
             assert len(results) == n_test
             good = results[~results["mpf_unknown_flag"]]
