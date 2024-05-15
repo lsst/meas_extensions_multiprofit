@@ -377,8 +377,10 @@ def plot_blend(
             )
 
     cat_ref = rebuilder_ref.catalog_multi
-    id_parent = cat_ref[idx_row_parent]["id"]
-    idx_children = np.where(rebuilder_ref.catalog_multi["parent"] == id_parent)[0]
+    row_parent = cat_ref[idx_row_parent]
+    idx_children = (idx_row_parent,) if (row_parent["parent"] == 0) else (
+        np.where(rebuilder_ref.catalog_multi["parent"] == row_parent["id"])[0]
+    )
 
     for idx_child in idx_children:
         for name, matched in rebuilder.matches.items():

@@ -58,10 +58,9 @@ tasks:
         )
         from lsst.analysis.tools.atools.genericBuild import FluxConfig
         model_err = FluxConfig(
-          band_format = "{key}",
           name_flux = parameters.label_model,
           key_flux = f"mpf_{parameters.name_model}_{{band}}_flux",
-          key_flux_error = "{key_flux}_err"
+          key_flux_error = f"mpf_{parameters.name_model}_{{band}}_flux_err",
         )
         coord_ra = f"mpf_{parameters.name_model}_cen_ra"
         coord_dec = f"mpf_{parameters.name_model}_cen_dec"

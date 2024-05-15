@@ -1,5 +1,7 @@
 description: |
   Fit gaussian mix single-band coadd PSF with MultiProFit
+parameters:
+  use_shapelet_psf: False
 tasks:
   fit_psf_multiprofit:
     class: lsst.pipe.tasks.fit_coadd_psf.CoaddPsfFitTask
@@ -20,6 +22,9 @@ tasks:
         from lsst.multiprofit.modelconfig import ModelConfig
         from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        if parameters.use_shapelet_psf:
+          from lsst.meas.extensions.multiprofit.fit_coadd_multiband import SourceTablePsfComponentsAction
+          config.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         config.fit_coadd_multiband.config_model = ModelConfig(
           sources={"": SourceConfig(component_groups={"": ComponentGroupConfig(
             components_gauss={
@@ -53,6 +58,9 @@ tasks:
         from lsst.multiprofit.modelconfig import ModelConfig
         from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        if parameters.use_shapelet_psf:
+          from lsst.meas.extensions.multiprofit.fit_coadd_multiband import SourceTablePsfComponentsAction
+          config.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         config.fit_coadd_multiband.config_model = ModelConfig(
           sources={"": SourceConfig(component_groups={"": ComponentGroupConfig(
             components_gauss={
@@ -83,6 +91,9 @@ tasks:
         from lsst.multiprofit.modelconfig import ModelConfig
         from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        if parameters.use_shapelet_psf:
+          from lsst.meas.extensions.multiprofit.fit_coadd_multiband import SourceTablePsfComponentsAction
+          config.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         config.fit_coadd_multiband.config_model = ModelConfig(
           sources={"": SourceConfig(component_groups={"": ComponentGroupConfig(
             components_sersic={
@@ -106,6 +117,9 @@ tasks:
         from lsst.multiprofit.modelconfig import ModelConfig
         from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        if parameters.use_shapelet_psf:
+          from lsst.meas.extensions.multiprofit.fit_coadd_multiband import SourceTablePsfComponentsAction
+          config.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         config.fit_coadd_multiband.config_model = ModelConfig(
           sources={"": SourceConfig(component_groups={"": ComponentGroupConfig(
             centroids={"default": CentroidConfig(
@@ -133,6 +147,9 @@ tasks:
         from lsst.multiprofit.modelconfig import ModelConfig
         from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        if parameters.use_shapelet_psf:
+          from lsst.meas.extensions.multiprofit.fit_coadd_multiband import SourceTablePsfComponentsAction
+          config.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         config.fit_coadd_multiband.config_model = ModelConfig(
           sources={"": SourceConfig(component_groups={"": ComponentGroupConfig(
             centroids={"default": CentroidConfig(
@@ -159,6 +176,9 @@ tasks:
         from lsst.multiprofit.modelconfig import ModelConfig
         from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        if parameters.use_shapelet_psf:
+          from lsst.meas.extensions.multiprofit.fit_coadd_multiband import SourceTablePsfComponentsAction
+          config.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         config.fit_coadd_multiband.config_model = ModelConfig(
           sources={"": SourceConfig(component_groups={"": ComponentGroupConfig(
             components_sersic={
@@ -185,6 +205,9 @@ tasks:
         from lsst.multiprofit.modelconfig import ModelConfig
         from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        if parameters.use_shapelet_psf:
+          from lsst.meas.extensions.multiprofit.fit_coadd_multiband import SourceTablePsfComponentsAction
+          config.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         config.fit_coadd_multiband.config_model = ModelConfig(
           sources={"": SourceConfig(component_groups={"": ComponentGroupConfig(
             components_sersic={
@@ -207,6 +230,9 @@ tasks:
         from lsst.multiprofit.modelconfig import ModelConfig
         from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        if parameters.use_shapelet_psf:
+          from lsst.meas.extensions.multiprofit.fit_coadd_multiband import SourceTablePsfComponentsAction
+          config.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         config.fit_coadd_multiband.config_model = ModelConfig(
           sources={"": SourceConfig(component_groups={"": ComponentGroupConfig(
             components_gauss={
@@ -236,6 +262,9 @@ tasks:
         from lsst.multiprofit.modelconfig import ModelConfig
         from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
         config.fit_coadd_multiband.retarget(MultiProFitSourceTask)
+        if parameters.use_shapelet_psf:
+          from lsst.meas.extensions.multiprofit.fit_coadd_multiband import SourceTablePsfComponentsAction
+          config.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         config.fit_coadd_multiband.config_model = ModelConfig(
           sources={"": SourceConfig(component_groups={"": ComponentGroupConfig(
             components_gauss={

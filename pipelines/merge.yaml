@@ -7,6 +7,7 @@ parameters:
   include_psflux: False
   merge_expdev: False
   merge_psexpdev: False
+  merge_psfs: False
   merge_psgauss: False
   merge_psser: False
   merge_ser: False
@@ -27,7 +28,8 @@ tasks:
             doc="PSF fit parameters",
             column_id="id",
           ),
-          "objectTable_tract": InputConfig(
+        } if parameters.merge_psfs else {}
+        inputs["objectTable_tract"] = InputConfig(
             doc="Merged object table",
             # objectId is needed for inner join
             columns=["objectId", "refExtendedness", "detect_isPatchInner"],
@@ -35,8 +37,7 @@ tasks:
             is_multipatch=True,
             join_column="objectId",
             storageClass="DataFrame",
-          ),
-        }
+        )
         if parameters.merge_ser_fixedcen:
           inputs["deepCoadd_ser_fixedcen_multiprofit"] = InputConfig(
             doc="Sersic fixed centroid source fit",
