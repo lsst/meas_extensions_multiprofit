@@ -22,24 +22,128 @@
 __all__ = ["ModelRebuilder", "PatchModelMatches", "PatchCoaddRebuilder"]
 
 from functools import cached_property
+from typing import Iterable
 
 import astropy.table
+import astropy.units as u
 import gauss2d.fit as g2f
 import lsst.afw.table as afwTable
 import lsst.daf.butler as dafButler
 import lsst.geom as geom
+import numpy as np
 import pydantic
+from lsst.meas.extensions.scarlet.io import updateCatalogFootprints
 from lsst.pipe.base import QuantumContext, QuantumGraph
-from lsst.pipe.tasks.fit_coadd_multiband import CoaddMultibandFitTask
-from lsst.skymap import BaseSkyMap
+from lsst.pipe.tasks.fit_coadd_multiband import (
+    CoaddMultibandFitBaseTemplates,
+    CoaddMultibandFitInputConnections,
+    CoaddMultibandFitTask,
+)
+from lsst.skymap import BaseSkyMap, TractInfo
 
-from .fit_coadd_multiband import CatalogExposurePsfs, CatalogSourceFitterConfigData, MultiProFitSourceTask
+from .fit_coadd_multiband import (
+    CatalogExposurePsfs,
+    CatalogSourceFitterConfigData,
+    MultiProFitSourceConfig,
+    MultiProFitSourceTask,
+)
+
+astropy_to_geom_units = {
+    u.arcmin: geom.arcminutes,
+    u.arcsec: geom.arcseconds,
+    u.mas: geom.milliarcseconds,
+    u.deg: geom.degrees,
+    u.rad: geom.radians,
+}
 
 
-class ModelRebuilder(pydantic.BaseModel):
-    """A rebuilder of MultiProFit models from their inputs and best-fit
-    parameter values.
+def astropy_unit_to_geom(unit: u.Unit, default=None) -> geom.AngleUnit:
+    """Convert an astropy unit to an lsst.geom unit.
+
+    Parameters
+    ----------
+    unit
+        The astropy unit to convert.
+    default
+        The default value to return if no known conversion is found.
+
+    Returns
+    -------
+    unit_geom
+        The equivalent unit, if found.
+
+    Raises
+    ------
+    ValueError
+        Raised if no equivalent unit is found.
     """
+    unit_geom = astropy_to_geom_units.get(unit, default)
+    if unit_geom is None:
+        raise ValueError(f"{unit=} not found in {astropy_to_geom_units=}")
+    return unit_geom
+
+
+def find_patches(tract_info: TractInfo, ra_array, dec_array, unit: geom.AngleUnit) -> list[int]:
+    """Find the patches containing a list of ra/dec values within a tract.
+
+    Parameters
+    ----------
+    tract_info
+        The TractInfo object for the tract.
+    ra_array
+        The array of right ascension values.
+    dec_array
+        The array of declination values (must be same length as ra_array).
+    unit
+        The unit of the RA/dec values.
+
+    Returns
+    -------
+    patches
+        A list of patches containing the specified RA/dec values.
+    """
+    radec = [geom.SpherePoint(ra, dec, units=unit) for ra, dec in zip(ra_array, dec_array, strict=True)]
+    points = np.array([geom.Point2I(tract_info.wcs.skyToPixel(coords)) for coords in radec])
+    x_list, y_list = (points[:, idx] // tract_info.patch_inner_dimensions[idx] for idx in range(2))
+    patches = [tract_info.getSequentialPatchIndexFromPair((x, y)) for x, y in zip(x_list, y_list)]
+    return patches
+
+
+def get_radec_unit(table: astropy.table.Table, coord_ra: str, coord_dec: str, default=None):
+    """Get the RA/dec units for columns in a table.
+
+    Parameters
+    ----------
+    table
+        The table to determine units for.
+    coord_ra
+        The key of the right ascension column.
+    coord_dec
+        The key of the declination column.
+    default
+        The default value to return if no unit is found.
+
+    Returns
+    -------
+    unit
+        The unit of the RA/dec columns or None if none is found.
+
+    Raises
+    ------
+    ValueError
+        Raised if the units are inconsistent.
+    """
+    unit_ra, unit_dec = (
+        astropy_unit_to_geom(table[coord].unit, default=default) for coord in (coord_ra, coord_dec)
+    )
+    if unit_ra != unit_dec:
+        units = {coord: table[coord].unit for coord in (coord_ra, coord_dec)}
+        raise ValueError(f"Reference table has inconsistent {units=}")
+    return unit_ra
+
+
+class DataLoader(pydantic.BaseModel):
+    """A collection of data that can be used to rebuild models."""
 
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
@@ -49,13 +153,117 @@ class ModelRebuilder(pydantic.BaseModel):
     catalog_multi: afwTable.SourceCatalog = pydantic.Field(
         doc="Patch-level multiband reference catalog (deepCoadd_ref)",
     )
-    fit_results: astropy.table.Table = pydantic.Field(doc="Multiprofit model fit results")
-    task_fit: MultiProFitSourceTask = pydantic.Field(doc="The task")
 
     @cached_property
     def channels(self) -> tuple[g2f.Channel]:
         channels = tuple(g2f.Channel.get(catexp.band) for catexp in self.catexps)
         return channels
+
+    @classmethod
+    def from_butler(
+        cls, butler: dafButler.Butler, data_id: dict[str], bands: Iterable[str], name_coadd=None, **kwargs
+    ):
+        """Construct a DataLoader from a Butler and dataId.
+
+        Parameters
+        ----------
+        butler
+            The butler to load from.
+        data_id
+            Key-value pairs for the {name_coadd}Coadd_* dataId.
+        bands
+            The list of bands to load.
+        name_coadd
+            The prefix of the Coadd datasettype name.
+        **kwargs
+            Additional keyword arguments to pass to the init method for
+            `CoaddMultibandFitInputConnections`.
+
+        Returns
+        -------
+        data_loader
+            An initialized DataLoader.
+        """
+        bands = tuple(bands)
+        if len(set(bands)) != len(bands):
+            raise ValueError(f"{bands=} is not a set")
+        if name_coadd is None:
+            name_coadd = CoaddMultibandFitBaseTemplates["name_coadd"]
+
+        catalog_multi = butler.get(
+            CoaddMultibandFitInputConnections.cat_ref.name.format(name_coadd=name_coadd), **data_id, **kwargs
+        )
+
+        catexps = {}
+        for band in bands:
+            data_id["band"] = band
+            catalog = butler.get(
+                CoaddMultibandFitInputConnections.cats_meas.name.format(name_coadd=name_coadd),
+                **data_id,
+                **kwargs,
+            )
+            exposure = butler.get(
+                CoaddMultibandFitInputConnections.coadds.name.format(name_coadd=name_coadd),
+                **data_id,
+                **kwargs,
+            )
+            models_scarlet = butler.get(
+                CoaddMultibandFitInputConnections.models_scarlet.name.format(name_coadd=name_coadd),
+                **data_id,
+                **kwargs,
+            )
+            updateCatalogFootprints(
+                modelData=models_scarlet,
+                catalog=catalog,
+                band=data_id["band"],
+                imageForRedistribution=exposure,
+                removeScarletData=True,
+                updateFluxColumns=False,
+            )
+            # The config and table are harmless dummies
+            catexps[band] = CatalogExposurePsfs(
+                catalog=catalog,
+                exposure=exposure,
+                table_psf_fits=astropy.table.Table(),
+                dataId=data_id,
+                id_tract_patch=data_id["patch"],
+                channel=g2f.Channel.get(band),
+                config_fit=MultiProFitSourceConfig(),
+            )
+        return cls(
+            catalog_multi=catalog_multi,
+            catexps=list(catexps.values()),
+        )
+
+    def load_deblended_object(
+        self,
+        idx_row: int,
+    ) -> list[g2f.Observation]:
+        """Load a deblended object from catexps.
+
+        Parameters
+        ----------
+        idx_row
+            The index of the object to load.
+
+        Returns
+        -------
+        observations
+            The observations of the object (deblended if it is a child).
+        """
+        observations = []
+        for catexp in self.catexps:
+            observations.append(catexp.get_source_observation(catexp.get_catalog()[idx_row]))
+        return observations
+
+
+class ModelRebuilder(DataLoader):
+    """A rebuilder of MultiProFit models from their inputs and best-fit
+    parameter values.
+    """
+
+    fit_results: astropy.table.Table = pydantic.Field(doc="Multiprofit model fit results")
+    task_fit: MultiProFitSourceTask = pydantic.Field(doc="The task")
 
     @cached_property
     def config_data(self) -> CatalogSourceFitterConfigData:
@@ -197,7 +405,7 @@ class PatchModelMatches(pydantic.BaseModel):
 
     matches: astropy.table.Table | None = pydantic.Field(doc="Catalogs of matches")
     quantumgraph: QuantumGraph | None = pydantic.Field(doc="Quantum graph for fit task")
-    rebuilder: ModelRebuilder | None = pydantic.Field(doc="MultiProFit object model rebuilder")
+    rebuilder: DataLoader | ModelRebuilder | None = pydantic.Field(doc="MultiProFit object model rebuilder")
 
 
 class PatchCoaddRebuilder(pydantic.BaseModel):
@@ -208,7 +416,7 @@ class PatchCoaddRebuilder(pydantic.BaseModel):
     matches: dict[str, PatchModelMatches] = pydantic.Field("Model matches by algorithm name")
     name_model_ref: str = pydantic.Field(doc="The name of the reference model in matches")
     objects: astropy.table.Table = pydantic.Field(doc="Object table")
-    objects_multiprofit: astropy.table.Table = pydantic.Field(doc="Object table for MultiProFit fits")
+    objects_multiprofit: astropy.table.Table | None = pydantic.Field(doc="Object table for MultiProFit fits")
     reference: astropy.table.Table = pydantic.Field(doc="Reference object table")
 
     skymap: str = pydantic.Field(doc="The skymap name")
@@ -223,35 +431,81 @@ class PatchCoaddRebuilder(pydantic.BaseModel):
         tract: int,
         patch: int,
         collection_merged: str,
-        matches: dict[str, QuantumGraph],
+        matches: dict[str, QuantumGraph | None],
+        bands: Iterable[str] = None,
         name_model_ref: str = None,
         format_collection: str = "{run}",
+        load_multiprofit: bool = True,
+        dataset_type_ref: str = "truth_summary",
     ):
+        """Construct a PatchCoaddRebuilder from a single Butler collection.
+
+        Parameters
+        ----------
+        butler
+            The butler to load from.
+        skymap
+            The skymap for the collection.
+        tract
+            The skymap tract id.
+        patch
+            The skymap patch id.
+        collection_merged
+            The name of the collection with the merged objectTable(s).
+        matches
+            A dictionary of model names with corresponding QuantumGraphs.
+            These may be None but must be provided for MultiProFit model
+            reconstruction to be possible.
+        bands
+            The list of bands to load data for.
+        name_model_ref
+            The name of the model to use as a reference. Must be a key in
+            `matches`.
+        format_collection
+            A format string for the output collection(s) defined in the
+            `matches` QuantumGraphs.
+        load_multiprofit
+            Whether to attempt to load an objectTable_tract_multiprofit.
+        dataset_type_ref
+            The dataset type of the reference catalog.
+
+        Returns
+        -------
+        rebuilder
+            The fully-configured PatchCoaddRebuilder.
+        """
         if name_model_ref is None:
             for name, quantumgraph in matches.items():
                 if quantumgraph is not None:
                     name_model_ref = name
                     break
         if name_model_ref is None:
-            raise ValueError("At least one matches with a quantumgraph must be supplied")
+            raise ValueError("Must supply name_model_ref or at least one matches with a quantumgraph")
         dataId = dict(skymap=skymap, tract=tract, patch=patch)
         objects = butler.get(
             "objectTable_tract", collections=[collection_merged], storageClass="ArrowAstropy", **dataId
         )
         objects = objects[objects["patch"] == patch]
-        objects_multiprofit = butler.get(
-            "objectTable_tract_multiprofit",
-            collections=[collection_merged],
-            storageClass="ArrowAstropy",
-            **dataId,
-        )
-        objects_multiprofit = objects_multiprofit[objects_multiprofit["patch"] == patch]
+        if load_multiprofit:
+            objects_multiprofit = butler.get(
+                "objectTable_tract_multiprofit",
+                collections=[collection_merged],
+                storageClass="ArrowAstropy",
+                **dataId,
+            )
+            objects_multiprofit = objects_multiprofit[objects_multiprofit["patch"] == patch]
+        else:
+            objects_multiprofit = None
         reference = butler.get(
-            "truth_summary", collections=[collection_merged], storageClass="ArrowAstropy", **dataId
+            dataset_type_ref, collections=[collection_merged], storageClass="ArrowAstropy", **dataId
         )
         skymap_tract = butler.get(BaseSkyMap.SKYMAP_DATASET_TYPE_NAME, skymap=skymap)[tract]
-        # the ci_imsim truth_summary still has string patches
-        if reference["patch"].dtype != int:
+        unit_coord_ref = get_radec_unit(reference, "ra", "dec", default=geom.degrees)
+        if "patch" not in reference.columns:
+            patches = find_patches(skymap_tract, reference["ra"], reference["dec"], unit=unit_coord_ref)
+            reference["patch"] = patches
+        elif reference["patch"].dtype != int:
+            # the ci_imsim truth_summary still has string patches
             index_patch = skymap_tract[patch].index
             str_patch = f"{index_patch.y},{index_patch.x}"
             reference = reference[
@@ -259,8 +513,7 @@ class PatchCoaddRebuilder(pydantic.BaseModel):
             ]
             del reference["patch"]
             reference["patch"] = patch
-        else:
-            reference = reference[reference["patch"] == patch]
+        reference = reference[reference["patch"] == patch]
         points = skymap_tract.wcs.skyToPixel(
             [geom.SpherePoint(row["ra"], row["dec"], units=geom.degrees) for row in reference]
         )
@@ -270,7 +523,7 @@ class PatchCoaddRebuilder(pydantic.BaseModel):
         for name, quantumgraph in matches.items():
             is_mpf = quantumgraph is not None
             matched = butler.get(
-                f"matched_truth_summary_objectTable_tract{'_multiprofit' if is_mpf else ''}",
+                f"matched_{dataset_type_ref}_objectTable_tract{'_multiprofit' if is_mpf else ''}",
                 collections=[
                     format_collection.format(run=quantumgraph.metadata["output"], name=name)
                     if is_mpf
@@ -279,9 +532,32 @@ class PatchCoaddRebuilder(pydantic.BaseModel):
                 storageClass="ArrowAstropy",
                 **dataId,
             )
+            # unmatched ref objects don't have a patch set
+            # should probably be fixed in diff_matched
+            # but need to decide priority on matched - ref first? or target?
+            unit_coord_ref = get_radec_unit(
+                matched,
+                "refcat_ra",
+                "refcat_dec",
+                default=geom.degrees,
+            )
+            unmatched = (
+                matched["patch"].mask if np.ma.is_masked(matched["patch"]) else ~(matched["patch"] >= 0)
+            ) & np.isfinite(matched["refcat_ra"])
+            patches_unmatched = find_patches(
+                skymap_tract,
+                matched["refcat_ra"][unmatched],
+                matched["refcat_dec"][unmatched],
+                unit=unit_coord_ref,
+            )
+            matched["patch"][np.where(unmatched)[0]] = patches_unmatched
             matched = matched[matched["patch"] == patch]
             rebuilder = (
-                ModelRebuilder.from_quantumGraph(butler, quantumgraph, dataId=dataId) if is_mpf else None
+                ModelRebuilder.from_quantumGraph(butler, quantumgraph, dataId=dataId)
+                if is_mpf
+                else DataLoader.from_butler(
+                    butler, data_id=dataId, bands=bands, collections=[collection_merged]
+                )
             )
             matches_name[name] = PatchModelMatches(
                 matches=matched, quantumgraph=quantumgraph, rebuilder=rebuilder
