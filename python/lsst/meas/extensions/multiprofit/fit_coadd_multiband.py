@@ -22,7 +22,7 @@
 import logging
 import math
 from functools import cached_property
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, ClassVar, Iterable, Mapping, Sequence
 
 import lsst.gauss2d as g2
 import lsst.gauss2d.fit as g2f
@@ -34,18 +34,16 @@ import numpy as np
 import pydantic
 from astropy.table import Table
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
-from lsst.multiprofit.config import set_config_from_dict
 from lsst.multiprofit.errors import NoDataError, PsfRebuildFitFlagError
-from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig, CatalogPsfFitterConfigData
-from lsst.multiprofit.fit_source import (
+from lsst.multiprofit.utils import get_params_uniq, set_config_from_dict
+from lsst.multiprofit.fitting.fit_psf import CatalogPsfFitterConfig, CatalogPsfFitterConfigData
+from lsst.multiprofit.fitting.fit_source import (
     CatalogExposureSourcesABC,
     CatalogSourceFitterABC,
     CatalogSourceFitterConfig,
     CatalogSourceFitterConfigData,
 )
-from lsst.multiprofit.utils import get_params_uniq
 from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
-from pydantic.dataclasses import dataclass
 
 from .errors import IsParentError, NotPrimaryError
 from .utils import get_spanned_image
@@ -227,7 +225,6 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         self.centroid_pixel_offset = -0.5
 
 
-@dataclass(frozen=True, kw_only=True, config=fitMB.CatalogExposureConfig)
 class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC):
     """Input data from lsst pipelines, parsed for MultiProFit."""
 
@@ -414,8 +411,8 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
     See https://github.com/lsst-dm/multiprofit for more MultiProFit info.
     """
 
-    ConfigClass = MultiProFitSourceConfig
-    _DefaultName = "multiProFitSource"
+    ConfigClass: ClassVar = MultiProFitSourceConfig
+    _DefaultName: ClassVar = "multiProFitSource"
 
     def __init__(self, **kwargs: Any):
         errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")

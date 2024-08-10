@@ -37,9 +37,9 @@ from lsst.multiprofit.componentconfig import (
     SersicComponentConfig,
     SersicIndexParameterConfig,
 )
-from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig
 from lsst.multiprofit.modelconfig import ModelConfig
 from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
+from lsst.multiprofit.fitting.fit_psf import CatalogPsfFitterConfig
 from lsst.pipe.tasks.fit_coadd_psf import CatalogExposurePsf
 
 ROOT = os.environ.get("TESTDATA_CI_IMSIM_MINI", None)

@@ -19,13 +19,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import ClassVar
+
 import lsst.gauss2d.fit as g2f
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
 import lsst.utils.timer as utilsTimer
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
-from lsst.multiprofit.fit_psf import CatalogPsfFitter, CatalogPsfFitterConfig, CatalogPsfFitterConfigData
+from lsst.multiprofit.fitting.fit_psf import (
+    CatalogPsfFitter, CatalogPsfFitterConfig, CatalogPsfFitterConfigData,
+)
 from lsst.pex.exceptions import InvalidParameterError
 
 from .errors import IsParentError
@@ -64,8 +68,8 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
     See https://github.com/lsst-dm/multiprofit for more MultiProFit info.
     """
 
-    ConfigClass = MultiProFitPsfConfig
-    _DefaultName = "multiProFitPsf"
+    ConfigClass: ClassVar = MultiProFitPsfConfig
+    _DefaultName: ClassVar = "multiProFitPsf"
 
     def __init__(self, **kwargs):
         errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
