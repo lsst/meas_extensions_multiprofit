@@ -260,7 +260,7 @@ def test_psf_fits(psf_fit_results):
     if psf_fit_results is not None:
         assert len(psf_fit_results) == n_test
         for column in psf_fit_results.columns:
-            assert np.all(np.isfinite(psf_fit_results[column]))
+            assert column and np.all(np.isfinite(psf_fit_results[column]))
         # TODO: Determine what checks can be done against previous values
 
 
