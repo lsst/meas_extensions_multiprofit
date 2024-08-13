@@ -225,6 +225,7 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         self.centroid_pixel_offset = -0.5
 
 
+@pydantic.dataclasses.dataclass(frozen=True, kw_only=True, config=fitMB.CatalogExposureConfig)
 class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC):
     """Input data from lsst pipelines, parsed for MultiProFit."""
 
