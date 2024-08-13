@@ -62,10 +62,6 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
     ----------
     **kwargs
         Keyword arguments to pass to CoaddPsfFitSubTask.__init__.
-
-    Notes
-    -----
-    See https://github.com/lsst-dm/multiprofit for more MultiProFit info.
     """
 
     ConfigClass: ClassVar = MultiProFitPsfConfig
