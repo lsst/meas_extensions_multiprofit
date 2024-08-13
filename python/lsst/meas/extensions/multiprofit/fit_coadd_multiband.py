@@ -394,26 +394,8 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         object.__setattr__(self, "psf_model_data", config_data)
 
 
-class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTask):
-    """Run MultiProFit on Exposure/SourceCatalog pairs in multiple bands.
-
-    This task uses MultiProFit to fit a single model to all sources in a coadd,
-    using a previously-fit PSF model for each exposure. The task may also use
-    prior measurements from single- or merged multiband catalogs for
-    initialization.
-
-    Parameters
-    ----------
-    **kwargs
-        Keyword arguments to pass to CoaddMultibandFitSubTask.__init__.
-
-    Notes
-    -----
-    See https://github.com/lsst-dm/multiprofit for more MultiProFit info.
-    """
-
-    ConfigClass: ClassVar = MultiProFitSourceConfig
-    _DefaultName: ClassVar = "multiProFitSource"
+class MultiProFitSourceFitter(CatalogSourceFitterABC):
+    """A MultiProFit source fitter."""
 
     def __init__(self, **kwargs: Any):
         errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
@@ -423,8 +405,7 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         for error_catalog in (IsParentError, NoDataError, NotPrimaryError, PsfRebuildFitFlagError):
             if error_catalog not in errors_expected:
                 errors_expected[error_catalog] = error_catalog.column_name()
-        CatalogSourceFitterABC.__init__(self, errors_expected=errors_expected)
-        fitMB.CoaddMultibandFitSubTask.__init__(self, **kwargs)
+        super().__init__(errors_expected=errors_expected)
 
     def copy_centroid_errors(
         self,
@@ -601,11 +582,40 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
         )
         return catexp_psf
 
+    def validate_fit_inputs(
+        self,
+        catalog_multi: Sequence,
+        catexps: list[CatalogExposurePsfs],
+        config_data: CatalogSourceFitterConfigData = None,
+        logger: logging.Logger = None,
+        **kwargs: Any,
+    ) -> None:
+        errors = []
+        for idx, catexp in enumerate(catexps):
+            if not isinstance(catexp, CatalogExposurePsfs):
+                errors.append(f"catexps[{idx=} {type(catexp)=} !isinstance(CatalogExposurePsfs)")
+        if errors:
+            raise RuntimeError("\n".join(errors))
+
+
+class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
+    """Run MultiProFit on Exposure/SourceCatalog pairs in multiple bands.
+
+    This task uses MultiProFit to fit a single model to all sources in a coadd,
+    using a previously-fit PSF model for each exposure. The task may also use
+    prior measurements from single- or merged multiband catalogs for
+    initialization.
+    """
+
+    ConfigClass: ClassVar = MultiProFitSourceConfig
+    _DefaultName: ClassVar = "multiProFitSource"
+
     @utilsTimer.timeMethod
     def run(
         self,
         catalog_multi: Sequence,
         catexps: list[fitMB.CatalogExposureInputs],
+        fitter: MultiProFitSourceFitter | None = None,
         **kwargs,
     ) -> pipeBase.Struct:
         """Run the MultiProFit source fit task on catalog-exposure pairs.
@@ -625,32 +635,19 @@ class MultiProFitSourceTask(CatalogSourceFitterABC, fitMB.CoaddMultibandFitSubTa
             A table with fit parameters for the PSF model at the location
             of each source.
         """
+        if fitter is None:
+            fitter = MultiProFitSourceFitter()
         n_catexps = len(catexps)
         catexps_conv: list[CatalogExposurePsfs] = [None] * n_catexps
         channels: list[g2f.Channel] = [None] * n_catexps
         for idx, catexp in enumerate(catexps):
             if not isinstance(catexp, CatalogExposurePsfs):
-                catexp = self.make_CatalogExposurePsfs(catexp)
+                catexp = fitter.make_CatalogExposurePsfs(catexp)
             catexps_conv[idx] = catexp
             channels[idx] = catexp.channel
         self.catexps = catexps
         config_data = CatalogSourceFitterConfigData(channels=channels, config=self.config)
-        catalog = self.fit(
+        catalog = fitter.fit(
             catalog_multi=catalog_multi, catexps=catexps_conv, config_data=config_data, **kwargs
         )
         return pipeBase.Struct(output=astropy_to_arrow(catalog))
-
-    def validate_fit_inputs(
-        self,
-        catalog_multi: Sequence,
-        catexps: list[CatalogExposurePsfs],
-        config_data: CatalogSourceFitterConfigData = None,
-        logger: logging.Logger = None,
-        **kwargs: Any,
-    ) -> None:
-        errors = []
-        for idx, catexp in enumerate(catexps):
-            if not isinstance(catexp, CatalogExposurePsfs):
-                errors.append(f"catexps[{idx=} {type(catexp)=} !isinstance(CatalogExposurePsfs)")
-        if errors:
-            raise RuntimeError("\n".join(errors))
