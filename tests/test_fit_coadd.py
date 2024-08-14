@@ -37,9 +37,9 @@ from lsst.multiprofit.componentconfig import (
     SersicComponentConfig,
     SersicIndexParameterConfig,
 )
-from lsst.multiprofit.fit_psf import CatalogPsfFitterConfig
 from lsst.multiprofit.modelconfig import ModelConfig
 from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
+from lsst.multiprofit.fitting.fit_psf import CatalogPsfFitterConfig
 from lsst.pipe.tasks.fit_coadd_psf import CatalogExposurePsf
 
 ROOT = os.environ.get("TESTDATA_CI_IMSIM_MINI", None)
@@ -260,7 +260,7 @@ def test_psf_fits(psf_fit_results):
     if psf_fit_results is not None:
         assert len(psf_fit_results) == n_test
         for column in psf_fit_results.columns:
-            assert np.all(np.isfinite(psf_fit_results[column]))
+            assert column and np.all(np.isfinite(psf_fit_results[column]))
         # TODO: Determine what checks can be done against previous values
 
 
