@@ -25,12 +25,12 @@ from typing import Any, Iterable, Self, Type
 
 import astropy.table
 import astropy.units as u
+from lsst.multiprofit.plots import bands_weights_lsst, plot_model_rgb
 import matplotlib.axes
 import matplotlib.figure
 import matplotlib.pyplot as plt
 import numpy as np
 import pydantic
-from lsst.multiprofit.plots import bands_weights_lsst, plot_model_rgb
 
 from .rebuild_coadd_multiband import DataLoader, PatchCoaddRebuilder
 
@@ -351,8 +351,12 @@ def plot_blend(
     }
 
     fig_rgb, ax_rgb, fig_gs, ax_gs, *_ = plot_model_rgb(
-        model=None, weights=weights, observations=observations, plot_singleband=False, plot_chi_hist=False,
-        **kwargs_plot_parent
+        model=None,
+        weights=weights,
+        observations=observations,
+        plot_singleband=False,
+        plot_chi_hist=False,
+        **kwargs_plot_parent,
     )
     table_within_ref = downselect_table_axis(table_ref_type(table=rebuilder.reference), ax_rgb)
     plot_objects(table_within_ref, ax_rgb, weights, table_downselected=True)
@@ -384,8 +388,10 @@ def plot_blend(
 
     cat_ref = rebuilder_ref.catalog_multi
     row_parent = cat_ref[idx_row_parent]
-    idx_children = (idx_row_parent,) if (row_parent["parent"] == 0) else (
-        np.where(rebuilder_ref.catalog_multi["parent"] == row_parent["id"])[0]
+    idx_children = (
+        (idx_row_parent,)
+        if (row_parent["parent"] == 0)
+        else (np.where(rebuilder_ref.catalog_multi["parent"] == row_parent["id"])[0])
     )
 
     for idx_child in idx_children:
@@ -404,10 +410,12 @@ def plot_blend(
                         observations = None
 
                     _, ax_rgb_c, *_ = plot_model_rgb(
-                        model=model, weights=weights, plot_singleband=False,
+                        model=model,
+                        weights=weights,
+                        plot_singleband=False,
                         plot_chi_hist=(not is_dataloader) and plot_chi_hist,
                         observations=observations,
-                        **kwargs_plot_children
+                        **kwargs_plot_children,
                     )
                     ax_rgb_c0 = ax_rgb_c[0][0]
                     plot_objects(table_within_ref, ax_rgb_c0, weights)

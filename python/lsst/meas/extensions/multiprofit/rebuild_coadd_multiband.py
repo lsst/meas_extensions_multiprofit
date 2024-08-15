@@ -26,12 +26,10 @@ from typing import Iterable
 
 import astropy.table
 import astropy.units as u
-import lsst.gauss2d.fit as g2f
 import lsst.afw.table as afwTable
 import lsst.daf.butler as dafButler
+import lsst.gauss2d.fit as g2f
 import lsst.geom as geom
-import numpy as np
-import pydantic
 from lsst.meas.extensions.scarlet.io import updateCatalogFootprints
 from lsst.pipe.base import QuantumContext, QuantumGraph
 from lsst.pipe.tasks.fit_coadd_multiband import (
@@ -40,6 +38,8 @@ from lsst.pipe.tasks.fit_coadd_multiband import (
     CoaddMultibandFitTask,
 )
 from lsst.skymap import BaseSkyMap, TractInfo
+import numpy as np
+import pydantic
 
 from .fit_coadd_multiband import (
     CatalogExposurePsfs,
@@ -525,9 +525,11 @@ class PatchCoaddRebuilder(pydantic.BaseModelD):
             matched = butler.get(
                 f"matched_{dataset_type_ref}_objectTable_tract{'_multiprofit' if is_mpf else ''}",
                 collections=[
-                    format_collection.format(run=quantumgraph.metadata["output"], name=name)
-                    if is_mpf
-                    else collection_merged
+                    (
+                        format_collection.format(run=quantumgraph.metadata["output"], name=name)
+                        if is_mpf
+                        else collection_merged
+                    )
                 ],
                 storageClass="ArrowAstropy",
                 **dataId,

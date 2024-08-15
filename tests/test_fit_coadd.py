@@ -21,15 +21,13 @@
 
 import os
 
-import lsst.gauss2d.fit as g2f
-import lsst.meas.extensions.multiprofit.fit_coadd_multiband as fitCMB
-import lsst.meas.extensions.multiprofit.fit_coadd_psf as fitCP
-import numpy as np
-import pytest
 from astropy.table import Table
 from lsst.afw.image import ExposureF
 from lsst.afw.table import SourceCatalog
 from lsst.daf.butler.formatters.parquet import arrow_to_astropy
+import lsst.gauss2d.fit as g2f
+import lsst.meas.extensions.multiprofit.fit_coadd_multiband as fitCMB
+import lsst.meas.extensions.multiprofit.fit_coadd_psf as fitCP
 from lsst.multiprofit.componentconfig import (
     CentroidConfig,
     GaussianComponentConfig,
@@ -37,10 +35,12 @@ from lsst.multiprofit.componentconfig import (
     SersicComponentConfig,
     SersicIndexParameterConfig,
 )
+from lsst.multiprofit.fitting.fit_psf import CatalogPsfFitterConfig
 from lsst.multiprofit.modelconfig import ModelConfig
 from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
-from lsst.multiprofit.fitting.fit_psf import CatalogPsfFitterConfig
 from lsst.pipe.tasks.fit_coadd_psf import CatalogExposurePsf
+import numpy as np
+import pytest
 
 ROOT = os.environ.get("TESTDATA_CI_IMSIM_MINI", None)
 has_files = (ROOT is not None) and os.path.isdir(ROOT)
@@ -126,15 +126,17 @@ def source_fit_ser_config():
                 "": SourceConfig(
                     component_groups={
                         "": ComponentGroupConfig(
-                            components_gauss={
-                                "ps": GaussianComponentConfig(
-                                    size_x=ParameterConfig(value_initial=0.0, fixed=True),
-                                    size_y=ParameterConfig(value_initial=0.0, fixed=True),
-                                    rho=ParameterConfig(value_initial=0.0, fixed=True),
-                                )
-                            }
-                            if include_ps
-                            else {},
+                            components_gauss=(
+                                {
+                                    "ps": GaussianComponentConfig(
+                                        size_x=ParameterConfig(value_initial=0.0, fixed=True),
+                                        size_y=ParameterConfig(value_initial=0.0, fixed=True),
+                                        rho=ParameterConfig(value_initial=0.0, fixed=True),
+                                    )
+                                }
+                                if include_ps
+                                else {}
+                            ),
                             components_sersic={
                                 "ser": SersicComponentConfig(
                                     sersic_index=SersicIndexParameterConfig(value_initial=1.0),

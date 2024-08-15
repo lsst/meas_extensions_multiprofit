@@ -19,8 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import pytest
 from lsst.meas.extensions.multiprofit.analysis_tools import make_size_magnitude_tools
+import pytest
 
 
 @pytest.fixture(scope="module")

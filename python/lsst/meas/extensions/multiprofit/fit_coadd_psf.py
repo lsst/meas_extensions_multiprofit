@@ -21,16 +21,18 @@
 
 from typing import ClassVar
 
+from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 import lsst.gauss2d.fit as g2f
+from lsst.multiprofit.fitting.fit_psf import (
+    CatalogPsfFitter,
+    CatalogPsfFitterConfig,
+    CatalogPsfFitterConfigData,
+)
 import lsst.pex.config as pexConfig
+from lsst.pex.exceptions import InvalidParameterError
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
 import lsst.utils.timer as utilsTimer
-from lsst.daf.butler.formatters.parquet import astropy_to_arrow
-from lsst.multiprofit.fitting.fit_psf import (
-    CatalogPsfFitter, CatalogPsfFitterConfig, CatalogPsfFitterConfigData,
-)
-from lsst.pex.exceptions import InvalidParameterError
 
 from .errors import IsParentError
 

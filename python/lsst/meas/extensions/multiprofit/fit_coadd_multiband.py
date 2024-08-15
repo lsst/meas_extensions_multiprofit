@@ -19,23 +19,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from functools import cached_property
 import logging
 import math
-from functools import cached_property
 from typing import Any, ClassVar, Iterable, Mapping, Sequence
 
-import lsst.gauss2d as g2
-import lsst.gauss2d.fit as g2f
-import lsst.pex.config as pexConfig
-import lsst.pipe.base as pipeBase
-import lsst.pipe.tasks.fit_coadd_multiband as fitMB
-import lsst.utils.timer as utilsTimer
-import numpy as np
-import pydantic
 from astropy.table import Table
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
+import lsst.gauss2d as g2
+import lsst.gauss2d.fit as g2f
 from lsst.multiprofit.errors import NoDataError, PsfRebuildFitFlagError
-from lsst.multiprofit.utils import get_params_uniq, set_config_from_dict
 from lsst.multiprofit.fitting.fit_psf import CatalogPsfFitterConfig, CatalogPsfFitterConfigData
 from lsst.multiprofit.fitting.fit_source import (
     CatalogExposureSourcesABC,
@@ -43,7 +36,14 @@ from lsst.multiprofit.fitting.fit_source import (
     CatalogSourceFitterConfig,
     CatalogSourceFitterConfigData,
 )
+from lsst.multiprofit.utils import get_params_uniq, set_config_from_dict
+import lsst.pex.config as pexConfig
 from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
+import lsst.pipe.base as pipeBase
+import lsst.pipe.tasks.fit_coadd_multiband as fitMB
+import lsst.utils.timer as utilsTimer
+import numpy as np
+import pydantic
 
 from .errors import IsParentError, NotPrimaryError
 from .utils import get_spanned_image
@@ -395,17 +395,31 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
 
 
 class MultiProFitSourceFitter(CatalogSourceFitterABC):
-    """A MultiProFit source fitter."""
+    """A MultiProFit source fitter.
 
-    def __init__(self, **kwargs: Any):
-        errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
-        # This ensures that all of these errors are caught as expected, but...
-        # It means you can't turn them off even when specifying errors_expected
-        # If there is a use case to disable any of them, this can be changed
-        for error_catalog in (IsParentError, NoDataError, NotPrimaryError, PsfRebuildFitFlagError):
-            if error_catalog not in errors_expected:
-                errors_expected[error_catalog] = error_catalog.column_name()
-        super().__init__(errors_expected=errors_expected)
+    Parameters
+    ----------
+    errors_expected
+        A dictionary of exceptions that are expected to sometimes be raised
+        during processing (e.g. for missing data) keyed by the name of the
+        flag column used to record the failure.
+    add_missing_errors
+        Whether to add all of the standard MultiProFit errors with default
+        column names to errors_expected, if not already present.
+    **kwargs
+        Keyword arguments to pass to the superclass constructor.
+    """
+
+    def __init__(
+        self, errors_expected: dict[str, Exception] | None, add_missing_errors: bool = True, **kwargs: Any
+    ):
+        if errors_expected is None:
+            errors_expected = {}
+        if add_missing_errors:
+            for error_catalog in (IsParentError, NoDataError, NotPrimaryError, PsfRebuildFitFlagError):
+                if error_catalog not in errors_expected:
+                    errors_expected[error_catalog] = error_catalog.column_name()
+        super().__init__(errors_expected=errors_expected, **kwargs)
 
     def copy_centroid_errors(
         self,
@@ -626,6 +640,8 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
             A multi-band, indexable source catalog.
         catexps : list[`CatalogExposureInputs`]
             Catalog-exposure-PSF model tuples to fit source models for.
+        fitter
+            The fitter instance to use. Default-initialized if not provided.
         **kwargs
             Additional keyword arguments to pass to self.fit.
 
