@@ -59,6 +59,7 @@ def make_size_magnitude_tools(
             key_flux=f"mpf_{name_full}_{{band}}_flux",
             key_flux_error=f"mpf_{name_full}_{{band}}_flux_err",
             name_flux=label_model,
+            name_flux_short=name_model,
         )
         flags_false = (
             f"mpf_{name_model}_{flag}_flag" for flag in ("unknown", "is_parent", "not_primary", "psf_fit")
