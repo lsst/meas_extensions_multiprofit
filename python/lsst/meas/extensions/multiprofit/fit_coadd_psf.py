@@ -43,7 +43,7 @@ class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
     fit_parents = pexConfig.Field[bool](default=False, doc="Whether to fit parent object PSFs")
     initialize_ellipses = pexConfig.Field[bool](
         default=True,
-        doc="Whether to initializes the ellipse parameters from the model config; if False, they "
+        doc="Whether to initialize the ellipse parameters from the model config; if False, they "
         "will remain at the best-fit values for the previous source's PSF",
     )
     prefix_column = pexConfig.Field[str](default="mpf_psf_", doc="Column name prefix")

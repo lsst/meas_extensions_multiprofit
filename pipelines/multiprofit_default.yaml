@@ -1,0 +1,27 @@
+description: |
+  Default configuration for MultiProFit in LSST pipelines
+parameters:
+  add_pointsource: False
+  fix_centroid: False
+  use_shapelet_psf: False
+tasks:
+  fit_psf_multiprofit: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddPsfFitTask
+  fit_src_ser_multiprofit:
+    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddSersicFitTask
+    config:
+      python: |
+        config.finalize(
+          add_pointsource=parameters.add_pointsource,
+          fix_centroid=parameters.fix_centroid,
+          use_shapelet_psf=parameters.use_shapelet_psf,
+        )
+  merge_multiprofit: lsst.meas.extensions.multiprofit.pipetasks_merge.MultiProFitConsolidateTablesSersicTask
+  analyze_multiprofit_core:
+    class: lsst.analysis.tools.tasks.ObjectTableTractAnalysisTask
+    config:
+      connections.data: objectTable_tract_multiprofit
+      connections.outputName: objectTableMultiprofitCore
+      atools.serReffVsMag: MultiProFitSersicSizeMagnitudePlot
+
+      python: |
+        from lsst.meas.extensions.multiprofit.analysis_tools import MultiProFitSersicSizeMagnitudePlot

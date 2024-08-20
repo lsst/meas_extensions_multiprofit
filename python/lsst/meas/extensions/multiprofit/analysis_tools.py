@@ -12,14 +12,13 @@
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# but WITHOUT ANY WARRANTY; without e   ven the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Iterable
 
 from lsst.analysis.tools.atools.genericBuild import FluxConfig, MomentsConfig, SizeConfig
 from lsst.analysis.tools.atools.sizeMagnitude import SizeMagnitudePlot
@@ -28,59 +27,109 @@ from lsst.analysis.tools.contexts import CoaddContext
 moments_sersic = MomentsConfig(xx="reff_x", yy="reff_y", xy="rho")
 
 
-def make_size_magnitude_tools(
-    name_model: str,
-    label_model: str,
-    components: Iterable[tuple[str, str]],
-    kwargs_plot: dict[str, Any],
-) -> list[SizeMagnitudePlot]:
-    """Make a size-magnitude plot analysis_tool for a given model magnitude.
+class MultiProFitSizeMagnitudePlot(SizeMagnitudePlot):
+    """A size-magnitude plot with default MultiProFit column names."""
 
-    Parameters
-    ----------
-    name_model
-        The name of the model in keys (column names).
-    label_model
-        A descriptive label for the model.
-    components
-        A list of name-label pairs for model components.
-    kwargs_plot
-        Keyword arguments to set as attributes for the plot action.
+    def _get_flags_default(self, name_model: str):
+        flags_false = [
+            f"mpf_{name_model}_{flag}_flag" for flag in ("unknown", "is_parent", "not_primary", "psf_fit")
+        ]
+        flags_true = []
+        return flags_false, flags_true
 
-    Returns
-    -------
-    plots
-        A list of plot tools for each of the input components.
-    """
-    tools = []
-    for name_comp, label_comp in components:
-        name_full = f"{name_model}_{name_comp}"
+    def _set_model_defaults(
+        self, name_model: str, label_model: str, name_component: str, label_component: str
+    ):
+        flags_false, flags_true = self._get_flags_default(name_model)
+        self.prep.selectors.flagSelector.selectWhenFalse = flags_false
+        self.prep.selectors.flagSelector.selectWhenTrue = flags_true
+
+        name_full = f"{name_model}_{name_component}"
         flux_config = FluxConfig(
             key_flux=f"mpf_{name_full}_{{band}}_flux",
             key_flux_error=f"mpf_{name_full}_{{band}}_flux_err",
             name_flux=label_model,
             name_flux_short=name_model,
         )
-        flags_false = (
-            f"mpf_{name_model}_{flag}_flag" for flag in ("unknown", "is_parent", "not_primary", "psf_fit")
-        )
         size_config = SizeConfig(
             key_size=f"mpf_{name_full}_{{suffix}}",
-            name_size=f"{label_comp} {'$R_{eff}$'}",
+            name_size=f"{name_component} {'$R_{eff}$'}",
         )
-        atool = SizeMagnitudePlot(
-            fluxes={name_full: flux_config},
-            mag_x=name_full,
-            sizes={name_full: size_config},
-            size_y=name_full,
-            config_moments=moments_sersic,
-            size_type="determinantRadius",
-            is_covariance=False,
+        self.fluxes = {name_full: flux_config}
+        self.mag_x = name_full
+        self.sizes = {name_full: size_config}
+        self.size_y = name_full
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.applyContext(CoaddContext)
+        self.size_type = "determinantRadius"
+        self.is_covariance = False
+        self.produce.plot.xLims = (17, 29)
+        self.produce.plot.yLims = (-4, 3)
+
+
+class MultiProFitExpDevSizeMagnitudePlot(MultiProFitSizeMagnitudePlot):
+    """A size-magnitude plot for the MultiProFit Exp.Dev. model."""
+
+    label_model: str = "MPF Exp+Dev"
+    name_model: str = "expdev"
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.config_moments = moments_sersic
+
+
+class MultiProFitExpDevBulgeSizeMagnitudePlot(MultiProFitExpDevSizeMagnitudePlot):
+    """A size-magnitude plot for the bulge (de Vaucouleurs) component of a
+    MultiProFit ExpDev model.
+    """
+
+    label_component: str = "de Vauc."
+    name_component: str = "dev"
+
+    def setDefaults(self):
+        super().setDefaults()
+        self._set_model_defaults(
+            name_model=self.name_model,
+            label_model=self.label_model,
+            name_component=self.name_component,
+            label_component=self.label_component,
         )
-        atool.applyContext(CoaddContext)
-        atool.prep.selectors.flagSelector.selectWhenFalse = flags_false
-        atool.prep.selectors.flagSelector.selectWhenTrue = []
-        for name_attr, value in kwargs_plot.items():
-            setattr(atool.produce.plot, name_attr, value)
-        tools.append(atool)
-    return tools
+
+
+class MultiProFitExpDevDiskSizeMagnitudePlot(MultiProFitExpDevSizeMagnitudePlot):
+    """A size-magnitude plot for the disk (exponential) component of a
+    MultiProFit ExpDev model.
+    """
+
+    label_component: str = "Exponential"
+    name_component: str = "exp"
+
+    def setDefaults(self):
+        super().setDefaults()
+        self._set_model_defaults(
+            name_model=self.name_model,
+            label_model=self.label_model,
+            name_component=self.name_component,
+            label_component=self.label_component,
+        )
+
+
+class MultiProFitSersicSizeMagnitudePlot(MultiProFitSizeMagnitudePlot):
+    """A size-magnitude plot for the MultiProFit Sersic model."""
+
+    label_model: str = "MPF Sersic"
+    name_model: str = "ser"
+    label_component: str = "Sersic"
+    name_component: str = "ser"
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.config_moments = moments_sersic
+        self._set_model_defaults(
+            name_model=self.name_model,
+            label_model=self.label_model,
+            name_component=self.name_component,
+            label_component=self.label_component,
+        )

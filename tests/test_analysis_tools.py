@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.meas.extensions.multiprofit.analysis_tools import make_size_magnitude_tools
+from lsst.meas.extensions.multiprofit.analysis_tools import MultiProFitSersicSizeMagnitudePlot
 import pytest
 
 
@@ -34,12 +34,7 @@ def kwargs_plot():
 
 @pytest.fixture(scope="module")
 def tool_sersic(kwargs_plot):
-    (atool,) = make_size_magnitude_tools(
-        name_model="ser",
-        label_model="MPF Ser",
-        components=(("ser", "Sersic"),),
-        kwargs_plot=kwargs_plot,
-    )
+    atool = MultiProFitSersicSizeMagnitudePlot()
     atool.finalize()
     return atool
 
