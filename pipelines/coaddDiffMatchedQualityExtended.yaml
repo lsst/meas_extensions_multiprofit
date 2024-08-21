@@ -38,6 +38,7 @@ tasks:
       atools.matchedRefPositionRaDiff.coord_label: R.A.
       atools.matchedRefPositionRaDiff.coord_meas: coord_ra
       atools.matchedRefPositionRaDiff.coord_ref: refcat_ra
+      atools.matchedRefPositionRaDiff.coord_ref_cos: refcat_dec
       atools.matchedRefPositionRaDiff.scale_factor: 3600000
       atools.matchedRefPositionRaDiff.produce.plot.xLims: lims_mag_x
       atools.matchedRefPositionRaDiff.produce.plot.yLims: lims_pos_diff
