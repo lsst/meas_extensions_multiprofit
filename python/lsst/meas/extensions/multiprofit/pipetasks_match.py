@@ -21,10 +21,15 @@
 
 __all__ = (
     "MultiProFitMatchTractCatalogConfig",
-    "MultiProFitMatchDC2CatalogConfig",
-    "MultiProFitMatchDC2CatalogTask",
+    "MultiProFitMatchTractCatalogDC2Config",
+    "MultiProFitMatchTractCatalogDC2Task",
 )
 
+from lsst.pipe.tasks.diff_matched_tract_catalog import (
+    DiffMatchedTractCatalogConfig,
+    DiffMatchedTractCatalogConnections,
+    DiffMatchedTractCatalogTask,
+)
 from lsst.pipe.tasks.match_tract_catalog import (
     MatchTractCatalogConfig,
     MatchTractCatalogConnections,
@@ -45,12 +50,18 @@ class MultiProFitMatchTractCatalogConfig(
 
         self.match_tract_catalog.columns_ref_copy = ["id", "truth_type"]
         self.match_tract_catalog.columns_target_copy = ["objectId"]
+        # Must be set since there's no default - subclasses should add to this
+        self.match_tract_catalog.columns_ref_meas = ["ra", "dec"]
+        # Subclasses must format these
+        columns_meas = ["{model_prefix}_cen_ra", "{model_prefix}_cen_dec"]
+        self.match_tract_catalog.columns_target_meas = columns_meas
+        self.match_tract_catalog.columns_target_err = [f"{col}_err" for col in columns_meas]
         # Override detect_isPrimary default because MultiProFit doesn't fit
         # non-primary rows anyway
         self.match_tract_catalog.columns_target_select_true = []
 
 
-class MultiProFitMatchDC2CatalogConfig(
+class MultiProFitMatchTractCatalogDC2Config(
     MultiProFitMatchTractCatalogConfig,
     pipelineConnections=MatchTractCatalogConnections,
 ):
@@ -73,13 +84,15 @@ class MultiProFitMatchDC2CatalogConfig(
         if bands_match is None:
             bands_match = ["u", "g", "r", "i", "z", "y"]
         fluxes_ref = [f"flux_{band}" for band in bands_match]
-        print(fluxes_ref)
         self.match_tract_catalog.columns_ref_flux = fluxes_ref
-        self.match_tract_catalog.columns_ref_meas = ["ra", "dec"] + fluxes_ref
+        self.match_tract_catalog.columns_ref_meas += fluxes_ref
         fluxes_meas = [f"{model_prefix}_{band}_flux" for band in bands_match]
-        columns_meas = [f"{model_prefix}_cen_ra", f"{model_prefix}_cen_dec"] + fluxes_meas
-        self.match_tract_catalog.columns_target_meas = columns_meas
-        self.match_tract_catalog.columns_target_err = [f"{col}_err" for col in columns_meas]
+        self.match_tract_catalog.columns_target_meas = [
+            col.format(model_prefix=model_prefix) for col in self.match_tract_catalog.columns_target_meas
+        ] + fluxes_meas
+        self.match_tract_catalog.columns_target_err = [
+            f"{col}_err" for col in self.match_tract_catalog.columns_target_meas
+        ]
         self.match_tract_catalog.coord_format.column_target_coord1 = f"{model_prefix}_cen_ra"
         self.match_tract_catalog.coord_format.column_target_coord2 = f"{model_prefix}_cen_dec"
         self.match_tract_catalog.columns_target_select_false = [
@@ -92,30 +105,97 @@ class MultiProFitMatchDC2CatalogConfig(
         self.match_tract_catalog.columns_ref_select_true = ["is_unique_truth_entry"]
 
 
-class MultiProFitMatchDC2CatalogTask(MatchTractCatalogTask):
+class MultiProFitMatchTractCatalogDC2Task(MatchTractCatalogTask):
     """Match DC2 truth_summary to a single model from an
     objectTable_tract_multiprofit.
     """
 
-    _DefaultName = "multiProFitMatchDC2Catalog"
-    ConfigClass = MultiProFitMatchDC2CatalogConfig
+    _DefaultName = "multiProFitMatchTractCatalogDC2"
+    ConfigClass = MultiProFitMatchTractCatalogDC2Config
 
 
-class MultiProFitMatchDC2CatalogSersicConfig(
-    MultiProFitMatchDC2CatalogConfig,
-    pipelineConnections=MatchTractCatalogConnections,
+class MultiProFitDiffMatchedTractCatalogConfig(
+    DiffMatchedTractCatalogConfig,
+    pipelineConnections=DiffMatchedTractCatalogConnections,
 ):
-    """PipelineTaskConfig for MultiProFitMatchDC2SersicCatalogTask."""
+    """Generic MultiProFit reference matched catalog writing task config."""
+
+    def finalize(
+        self,
+        model_prefixes: str | list[str],
+        bands: list[str] | None = None,
+        fluxes_include: list[str] | None = None,
+        sizes_include: list[str] | None = None,
+    ):
+        """Finalize matched catalog configuration for given models.
+
+        Total source fluxes are included for all bands. Individual component
+        fluxes are optional and must be specified.
+
+        Parameters
+        ----------
+        model_prefixes
+            One or more model column prefixes, e.g. mpf_ser. Only the first
+            model will have its centroid parameters copied.
+        bands
+            The bands to add fluxes for.
+        fluxes_include
+            Short column names of components whose sizes (reff) should be
+            included in the matched catalog.
+        sizes_include
+            Short column names of components whose sizes (reff) should be
+            included in the matched catalog.
+        """
+        if isinstance(model_prefixes, str):
+            model_prefixes = [model_prefixes]
+        elif not len(model_prefixes) > 0:
+            raise ValueError(f"{model_prefixes} must have len > 0")
+        if bands is None:
+            bands = ["u", "g", "r", "i", "z", "y"]
+        if fluxes_include is None:
+            fluxes_include = []
+        if sizes_include is None:
+            sizes_include = []
+        columns_target_add = []
+        for model_prefix in model_prefixes:
+            self.columns_target_copy += [
+                f"{model_prefix}_cen_x",
+                f"{model_prefix}_cen_y",
+                f"{model_prefix}_cen_x_err",
+                f"{model_prefix}_cen_y_err",
+            ]
+            for band in bands:
+                columns_target_add.append(f"{model_prefix}_{band}_flux")
+                for component in fluxes_include:
+                    columns_target_add.append(f"{model_prefix}_{component}_{band}_flux")
+            for size_include in sizes_include:
+                for ax in ("x", "y"):
+                    columns_target_add.append(f"{model_prefix}_{size_include}_reff_{ax}")
+        self.coord_format.column_target_coord1 = f"{model_prefixes[0]}_cen_ra"
+        self.coord_format.column_target_coord2 = f"{model_prefixes[0]}_cen_dec"
+        self.columns_ref_copy += [f"flux_{band}" for band in bands]
+        self.columns_target_copy.extend(columns_target_add)
+        self.columns_target_copy.extend([f"{col}_err" for col in columns_target_add])
+        self.columns_target_coord_err = [
+            col.format(model_prefix=model_prefixes[0]) for col in self.columns_target_coord_err
+        ]
+        self.columns_target_select_false = [f"{model_prefixes[0]}_not_primary_flag"]
+        self.columns_target_select_true = []
 
     def setDefaults(self):
-        super().setDefaults()
-        self.finalize(model_prefix="mpf_ser")
+        self.connections.name_input_cat_target = "objectTable_tract_multiprofit"
+        self.columns_ref_copy = ["is_pointsource"]
+        self.columns_target_copy = [
+            "objectId",
+            "patch",
+        ]
+        self.columns_target_coord_err = [
+            "{model_prefix}_cen_ra_err",
+            "{model_prefix}_cen_dec_err",
+        ]
 
 
-class MultiProFitMatchDC2CatalogSersicTask(MultiProFitMatchDC2CatalogTask):
-    """Match DC2 truth_summary to the single Sersic model from an
-    objectTable_tract_multiprofit.
-    """
+class MultiProfitDiffMatchedTractCatalogTask(DiffMatchedTractCatalogTask):
 
-    _DefaultName = "multiProFitMatchDC2Catalog"
-    ConfigClass = MultiProFitMatchDC2CatalogConfig
+    _DefaultName = "multiProfitDiffMatchedTractCatalogTask"
+    ConfigClass = MultiProFitDiffMatchedTractCatalogConfig

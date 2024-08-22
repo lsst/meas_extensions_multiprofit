@@ -51,7 +51,7 @@ tasks:
           use_shapelet_psf=parameters.use_shapelet_psf,
         )
   fit_src_expdev_multiprofit:
-    class: lsst.pipe.tasks.fit_coadd_multiband.MultiProFitCoaddExpDevFitTask
+    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddExpDevFitTask
     config:
       python: |
         from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddExpDevFitTask

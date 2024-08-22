@@ -25,7 +25,7 @@ from typing import Any, Iterable, Self, Type
 
 import astropy.table
 import astropy.units as u
-from lsst.multiprofit.plots import bands_weights_lsst, plot_model_rgb
+from lsst.multiprofit.plotting import bands_weights_lsst, plot_model_rgb
 import matplotlib.axes
 import matplotlib.figure
 import matplotlib.pyplot as plt
@@ -52,7 +52,7 @@ Axes = matplotlib.axes.Axes | Iterable[matplotlib.axes.Axes]
 FigureAxes = tuple[Figure, Axes]
 
 
-class ObjectTableBase(ABC, pydantic.BaseModelD):
+class ObjectTableBase(ABC, pydantic.BaseModel):
     """Base class for retrieving columns from tract-based object tables."""
 
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, frozen=True)

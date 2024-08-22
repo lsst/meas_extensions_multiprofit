@@ -130,6 +130,20 @@ class MultiProFitCoaddSersicFitConfig(
     """MultiProFit single Sersic model fit task config."""
 
     def _rename_defaults(self, name_new: str, index_new: float | None = None, fix_index: bool = False):
+        """Rename the default Sersic component to something more specific.
+
+        This is intended for fixed index models such as exponential and
+        deVaucouleurs.
+
+        Parameters
+        ----------
+        name_new
+            The new name for the component.
+        index_new
+            The initial value for the Sersic index.
+        fix_index
+            Whether the fix the index to the new value.
+        """
         comps = self.fit_coadd_multiband.config_model.sources[""].component_groups[""].components_sersic
         comp_sersic = comps["ser"]
         del comps["ser"]

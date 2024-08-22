@@ -12,7 +12,7 @@
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without e   ven the implied warranty of
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
@@ -80,7 +80,7 @@ class MultiProFitSizeMagnitudePlot(SizeMagnitudePlot):
         )
         size_config = SizeConfig(
             key_size=f"mpf_{name_full}_{{suffix}}",
-            name_size=f"{name_component} {'$R_{eff}$'}",
+            name_size=f"{label_component} {'$R_{eff}$'}",
         )
         self.fluxes = {name_full: flux_config}
         self.mag_x = name_full
