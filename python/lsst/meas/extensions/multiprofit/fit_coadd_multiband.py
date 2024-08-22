@@ -190,11 +190,20 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         doc="The action to return PSF component values from catalogs, if implemented",
         default=None,
     )
-    bands_fit = pexConfig.ListField(
-        dtype=str,
+    bands_fit = pexConfig.ListField[str](
         default=[],
         doc="list of bandpass filters to fit",
         listCheck=lambda x: (len(x) > 0) and (len(set(x)) == len(x)),
+    )
+    columns_copy = pexConfig.DictField[str, str](
+        doc="Mapping of input/output column names to copy from the input"
+        "multiband catalog to the output fit catalog.",
+        default={
+            "base_ClassificationExtendedness_value": "refExtendedness",
+            "base_ClassificationExtendedness_flag": "refExtendedness_flag",
+            "detect_isPatchInner": "detect_isPatchInner",
+        },
+        dictCheck=lambda x: len(set(x.values())) == len(x.values()),
     )
     mask_names_zero = pexConfig.ListField[str](
         doc="Mask bits to mask out",
@@ -297,7 +306,7 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
                 flux_remaining = 1.0
                 for flux, param_frac in zip(fluxes, params_flux[:-1]):
                     flux_component = flux / flux_total
-                    param_frac.value = flux_component /  flux_remaining
+                    param_frac.value = flux_component / flux_remaining
                     flux_remaining -= flux_component
             else:
                 for flux, param_flux in zip(fluxes, params_flux):
@@ -403,6 +412,8 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
 
     Parameters
     ----------
+    wcs
+        A WCS solution that applies to all exposures.
     errors_expected
         A dictionary of exceptions that are expected to sometimes be raised
         during processing (e.g. for missing data) keyed by the name of the
@@ -423,7 +434,7 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
         wcs: lsst.afw.geom.SkyWcs,
         errors_expected: dict[str, Exception] | None = None,
         add_missing_errors: bool = True,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         if errors_expected is None:
             errors_expected = {}
@@ -599,7 +610,9 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
                 prior.prior_size.mean_parameter.value = size_major
 
     def make_CatalogExposurePsfs(
-            self, catexp: fitMB.CatalogExposureInputs, config: MultiProFitSourceConfig,
+        self,
+        catexp: fitMB.CatalogExposureInputs,
+        config: MultiProFitSourceConfig,
     ) -> CatalogExposurePsfs:
         catexp_psf = CatalogExposurePsfs(
             # dataclasses.asdict(catexp)_makes a recursive deep copy.
@@ -681,4 +694,7 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
         catalog = fitter.fit(
             catalog_multi=catalog_multi, catexps=catexps_conv, config_data=config_data, **kwargs
         )
+        for name_in, name_out in self.config.columns_copy.items():
+            catalog[name_out] = catalog_multi[name_in]
+            catalog[name_out].description = catalog_multi.schema.find(name_in).field.getDoc()
         return pipeBase.Struct(output=astropy_to_arrow(catalog))
