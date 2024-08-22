@@ -31,6 +31,20 @@ class MultiProFitSizeMagnitudePlot(SizeMagnitudePlot):
     """A size-magnitude plot with default MultiProFit column names."""
 
     def _get_flags_default(self, name_model: str):
+        """Get the default MultiProFit flags for a given model.
+
+        Parameters
+        ----------
+        name_model
+            The short name of the model in table columns.
+
+        Returns
+        -------
+        flags_false
+            The flags that must be false for the fit to be good.
+        flags_true
+            The flags that must be true for the fit to be good.
+        """
         flags_false = [
             f"mpf_{name_model}_{flag}_flag" for flag in ("unknown", "is_parent", "not_primary", "psf_fit")
         ]
@@ -39,7 +53,20 @@ class MultiProFitSizeMagnitudePlot(SizeMagnitudePlot):
 
     def _set_model_defaults(
         self, name_model: str, label_model: str, name_component: str, label_component: str
-    ):
+    ) -> None:
+        """Set default values for a given model.
+
+        Parameters
+        ----------
+        name_model
+            The short name of the model in table columns.
+        label_model
+            The label for the model in plots.
+        name_component
+            The shortname of the component in table columns.
+        label_component
+            The label for the component in plots.
+        """
         flags_false, flags_true = self._get_flags_default(name_model)
         self.prep.selectors.flagSelector.selectWhenFalse = flags_false
         self.prep.selectors.flagSelector.selectWhenTrue = flags_true
