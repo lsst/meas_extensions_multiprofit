@@ -184,7 +184,7 @@ def source_fit_exp_fixedcen_results(
     psf_fit_results,
     psf_fit_config,
     source_fit_exp_fixedcen_config,
-):
+) -> Table:
     if not has_files:
         return None
     if not do_exp_fixedcen:
@@ -199,11 +199,17 @@ def source_fit_exp_fixedcen_results(
     )
     task = fitCMB.MultiProFitSourceTask(config=source_fit_exp_fixedcen_config)
     results = task.run(catalog_multi=catalog, catexps=[catexp])
-    return results.output.to_pandas()
+    return arrow_to_astropy(results.output)
 
 
 @pytest.fixture(scope="module")
-def source_fit_ser_results(catalog, exposure, psf_fit_results, psf_fit_config, source_fit_ser_config):
+def source_fit_ser_results(
+    catalog,
+    exposure,
+    psf_fit_results,
+    psf_fit_config,
+    source_fit_ser_config,
+) -> Table:
     if not has_files:
         return None
     catexp = fitCMB.CatalogExposurePsfs(
@@ -216,7 +222,7 @@ def source_fit_ser_results(catalog, exposure, psf_fit_results, psf_fit_config, s
     )
     task = fitCMB.MultiProFitSourceTask(config=source_fit_ser_config)
     results = task.run(catalog_multi=catalog, catexps=[catexp])
-    return results.output.to_pandas()
+    return arrow_to_astropy(results.output)
 
 
 @pytest.fixture(scope="module")
@@ -226,7 +232,7 @@ def source_fit_ser_shapelet_psf_results(
     psf_fit_results,
     psf_fit_config,
     source_fit_ser_config,
-):
+) -> Table:
     if not has_files:
         return None
     table_psf = Table(
@@ -243,7 +249,7 @@ def source_fit_ser_shapelet_psf_results(
     source_fit_ser_config.action_psf = fitCMB.SourceTablePsfComponentsAction()
     task = fitCMB.MultiProFitSourceTask(config=source_fit_ser_config)
     results = task.run(catalog_multi=catalog, catexps=[catexp])
-    return results.output.to_pandas()
+    return arrow_to_astropy(results.output)
 
 
 @pytest.fixture(scope="module")
@@ -271,6 +277,10 @@ def test_source_fits(source_fits_all):
     for results in source_fits_all:
         if results is not None:
             assert len(results) == n_test
-            good = results[~results["mpf_unknown_flag"]]
-            assert all(good.values.flat > -np.Inf)
+            prefix = results.meta["config"]["prefix_column"]
+            good = ~results[f"{prefix}unknown_flag"]
+            assert np.sum(~good) == 0
+            for column in results.columns:
+                if column.startswith(prefix):
+                    assert column and (np.sum(~np.isfinite(results[column][good])) == 0)
             # TODO: Determine what checks can be done against previous values
