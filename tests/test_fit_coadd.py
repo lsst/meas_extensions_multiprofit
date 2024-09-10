@@ -42,8 +42,9 @@ from lsst.pipe.tasks.fit_coadd_psf import CatalogExposurePsf
 import numpy as np
 import pytest
 
-ROOT = os.environ.get("TESTDATA_CI_IMSIM_MINI", None)
+ROOT = os.environ.get("TESTDATA_CI_IMSIM_MINI_DIR", None)
 has_files = (ROOT is not None) and os.path.isdir(ROOT)
+
 filename_cat = os.path.join(ROOT, "data", "deepCoadd_meas_0_24_r_2k_ci_imsim.fits") if has_files else None
 filename_exp = os.path.join(ROOT, "data", "deepCoadd_calexp_0_24_r_2k_ci_imsim.fits") if has_files else None
 
