@@ -39,6 +39,26 @@ def defaultdictNested():
     return defaultdict(defaultdictNested)
 
 
+def get_all_subclasses(cls, children_first: bool = True):
+    """Return all subclasses of a class recursively.
+
+    Parameters
+    ----------
+    children_first
+        If true, return child (direct subclasses) first, followed by their
+        children (recursively). Otherwise, return each direct child followed
+        by its own descendants first.
+    """
+    subclasses = {c: None for c in cls.__subclasses__()}
+    subclasses_return = subclasses.copy() if children_first else {}
+    for subclass in subclasses:
+        if children_first:
+            subclasses_return[subclass] = None
+        for subsubclass in get_all_subclasses(subclass):
+            subclasses_return[subsubclass] = None
+    return list(subclasses_return)
+
+
 # TODO: Allow addition to existing image
 def get_spanned_image(
     exposure: afwImage.Exposure,

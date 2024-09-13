@@ -23,7 +23,7 @@ from lsst.multiprofit.errors import CatalogError
 
 
 class IsParentError(CatalogError):
-    """RuntimeError for objects that are not primary and shouldn't be fit."""
+    """RuntimeError for objects that are parents and shouldn't be fit."""
 
     @classmethod
     def column_name(cls) -> str:

@@ -2,7 +2,7 @@ description: |
   Matched difference (multiprofit vs reference) plots/metrics
 parameters:
   label_model: "MPF Sersic"
-  name_model: "ser"
+  name_model: "Sersic"
   mag_x_min: 17
   mag_x_max: 29
   mag_diff_min: -1000
@@ -14,7 +14,7 @@ parameters:
   pos_chi_min: -5
   pos_chi_max: 5
 tasks:
-  diff_matched_analysis_multiprofit:
+  analyzeDiffMatchedMultiprofit:
     class: lsst.analysis.tools.tasks.DiffMatchedAnalysisTask
     config:
       connections.data: matched_truth_summary_objectTable_tract_multiprofit

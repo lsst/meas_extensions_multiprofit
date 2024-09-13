@@ -77,7 +77,7 @@ class MultiProFitMatchTractCatalogDC2Config(
         Parameters
         ----------
         model_prefix
-            The model column prefix, e.g. mpf_ser.
+            The model column prefix, e.g. mpf_Sersic.
         bands_match
             List of bands to match fluxes on.
         """
@@ -135,7 +135,7 @@ class MultiProFitDiffMatchedTractCatalogConfig(
         Parameters
         ----------
         model_prefixes
-            One or more model column prefixes, e.g. mpf_ser. Only the first
+            One or more model column prefixes, e.g. mpf_Sersic. Only the first
             model will have its centroid parameters copied.
         bands
             The bands to add fluxes for.

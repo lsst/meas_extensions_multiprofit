@@ -1,7 +1,7 @@
 description: |
   Fit a double Gaussian PSF model and various object models with MultiProFit
 parameters:
-  add_pointsource: False
+  add_point_source: False
   fix_centroid: False
   use_shapelet_psf: False
 tasks:
@@ -16,7 +16,7 @@ tasks:
       python: |
         from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddGaussianFitTask
         config.finalize(
-          add_pointsource=parameters.add_pointsource,
+          add_point_source=parameters.add_point_source,
           fix_centroid=parameters.fix_centroid,
           use_shapelet_psf=parameters.use_shapelet_psf,
         )
@@ -26,7 +26,7 @@ tasks:
       python: |
         from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddExponentialFitTask
         config.finalize(
-          add_pointsource=parameters.add_pointsource,
+          add_point_source=parameters.add_point_source,
           fix_centroid=parameters.fix_centroid,
           use_shapelet_psf=parameters.use_shapelet_psf,
         )
@@ -36,7 +36,7 @@ tasks:
       python: |
         from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddDeVaucFitTask
         config.finalize(
-          add_pointsource=parameters.add_pointsource,
+          add_point_source=parameters.add_point_source,
           fix_centroid=parameters.fix_centroid,
           use_shapelet_psf=parameters.use_shapelet_psf,
         )
@@ -46,7 +46,7 @@ tasks:
       python: |
         from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddSersicFitTask
         config.finalize(
-          add_pointsource=parameters.add_pointsource,
+          add_point_source=parameters.add_point_source,
           fix_centroid=parameters.fix_centroid,
           use_shapelet_psf=parameters.use_shapelet_psf,
         )
@@ -56,7 +56,7 @@ tasks:
       python: |
         from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddExpDevFitTask
         config.finalize(
-          add_pointsource=parameters.add_pointsource,
+          add_point_source=parameters.add_point_source,
           fix_centroid=parameters.fix_centroid,
           use_shapelet_psf=parameters.use_shapelet_psf,
         )

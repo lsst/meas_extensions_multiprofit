@@ -23,6 +23,14 @@ from typing import ClassVar
 
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 import lsst.gauss2d.fit as g2f
+from lsst.multiprofit import (
+    ComponentGroupConfig,
+    FluxFractionParameterConfig,
+    FluxParameterConfig,
+    GaussianComponentConfig,
+    ParameterConfig,
+    SourceConfig,
+)
 from lsst.multiprofit.fitting.fit_psf import (
     CatalogPsfFitter,
     CatalogPsfFitterConfig,
@@ -46,10 +54,30 @@ class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
         doc="Whether to initialize the ellipse parameters from the model config; if False, they "
         "will remain at the best-fit values for the previous source's PSF",
     )
-    prefix_column = pexConfig.Field[str](default="mpf_psf_", doc="Column name prefix")
+    prefix_column = pexConfig.Field[str](default="mpf_deepCoaddPsf_", doc="Column name prefix")
 
     def setDefaults(self):
         super().setDefaults()
+        self.model = SourceConfig(
+            component_groups={
+                "": ComponentGroupConfig(
+                    components_gauss={
+                        "gauss1": GaussianComponentConfig(
+                            size_x=ParameterConfig(value_initial=1.5),
+                            size_y=ParameterConfig(value_initial=1.5),
+                            fluxfrac=FluxFractionParameterConfig(value_initial=0.5),
+                            flux=FluxParameterConfig(value_initial=1.0, fixed=True),
+                        ),
+                        "gauss2": GaussianComponentConfig(
+                            size_x=ParameterConfig(value_initial=3.0),
+                            size_y=ParameterConfig(value_initial=3.0),
+                            fluxfrac=FluxFractionParameterConfig(value_initial=1.0, fixed=True),
+                        ),
+                    },
+                    is_fractional=True,
+                )
+            }
+        )
         self.flag_errors = {"no_inputs_flag": "InvalidParameterError"}
 
 

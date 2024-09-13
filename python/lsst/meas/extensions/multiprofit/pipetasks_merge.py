@@ -31,6 +31,8 @@ from .consolidate_astropy_table import (
     InputConfig,
     MergeMultibandFluxes,
 )
+from .pipetasks_fit import MultiProFitCoaddFitConfig, MultiProFitCoaddSersicFitConfig
+from .utils import get_all_subclasses
 
 
 class MultiProFitConsolidateTablesConfig(
@@ -39,13 +41,14 @@ class MultiProFitConsolidateTablesConfig(
 ):
     """PipelineTaskConfig for MultiProFitConsolidateTablesTask."""
 
-    names_long = {
-        "ser": "Sersic",
-        "gauss": "Gaussian",
-        "exp": "Exponential",
-        "dev": "deVauc.",
-        "expdev": "Exponential + deVauc.",
-    }
+    # Additional user-specified long model names
+    names_long = {}
+
+    def _get_name_long(self, name_short: str):
+        names_long_default = {
+            cls: cls.get_model_name_full() for cls in get_all_subclasses(MultiProFitCoaddFitConfig)
+        }
+        return names_long_default.get(name_short, self.names_long.get(name_short, "Unspecified"))
 
     def add_model(
         self,
@@ -55,13 +58,14 @@ class MultiProFitConsolidateTablesConfig(
         is_centroid_fixed: bool = False,
         is_psf_shapelet: bool = False,
     ):
-        description = self.names_long.get(name, description or "Unspecified")
+        if description is None:
+            description = self._get_name_long(name)
         if has_pointsource:
-            description = f"Point Source + {description}"
+            description = f"{description} + Point Source"
         if is_centroid_fixed:
-            description = f"{description} fixed centroid"
+            description = f"{description} (fixed centroid)"
         if is_psf_shapelet:
-            description = f"{description} shapelet PSF"
+            description = f"{description} (shapelet PSF)"
         self.inputs[f"deepCoadd_{name}_multiprofit"] = InputConfig(
             doc=f"{description} object fit parameters",
             action=MergeMultibandFluxes(name_model=name),
@@ -94,7 +98,7 @@ class MultiProFitConsolidateTablesSersicConfig(
 ):
     def setDefaults(self):
         super().setDefaults()
-        self.add_model("ser")
+        self.add_model(MultiProFitCoaddSersicFitConfig.get_model_name_default())
 
 
 class MultiProFitConsolidateTablesSersicTask(MultiProFitConsolidateTablesTask):

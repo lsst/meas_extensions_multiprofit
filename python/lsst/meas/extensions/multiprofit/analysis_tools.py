@@ -24,6 +24,14 @@ from lsst.analysis.tools.atools.genericBuild import FluxConfig, MomentsConfig, S
 from lsst.analysis.tools.atools.sizeMagnitude import SizeMagnitudePlot
 from lsst.analysis.tools.contexts import CoaddContext
 
+from .pipetasks_fit import (
+    MultiProFitCoaddDeVFitConfig,
+    MultiProFitCoaddExpDeVFitConfig,
+    MultiProFitCoaddExpFitConfig,
+    MultiProFitCoaddSersicFitConfig,
+    component_names_default,
+)
+
 moments_sersic = MomentsConfig(xx="reff_x", yy="reff_y", xy="rho")
 
 
@@ -99,9 +107,6 @@ class MultiProFitSizeMagnitudePlot(SizeMagnitudePlot):
 class MultiProFitExpDevSizeMagnitudePlot(MultiProFitSizeMagnitudePlot):
     """A size-magnitude plot for the MultiProFit Exp.Dev. model."""
 
-    label_model: str = "MPF Exp+Dev"
-    name_model: str = "expdev"
-
     def setDefaults(self):
         super().setDefaults()
         self.config_moments = moments_sersic
@@ -112,16 +117,13 @@ class MultiProFitExpDevBulgeSizeMagnitudePlot(MultiProFitExpDevSizeMagnitudePlot
     MultiProFit ExpDev model.
     """
 
-    label_component: str = "de Vauc."
-    name_component: str = "dev"
-
     def setDefaults(self):
         super().setDefaults()
         self._set_model_defaults(
-            name_model=self.name_model,
-            label_model=self.label_model,
-            name_component=self.name_component,
-            label_component=self.label_component,
+            name_model=MultiProFitCoaddExpDeVFitConfig.get_model_name_default(),
+            label_model=MultiProFitCoaddExpDeVFitConfig.get_model_name_full(),
+            name_component=component_names_default.deV,
+            label_component=MultiProFitCoaddDeVFitConfig.get_model_name_full(),
         )
 
 
@@ -130,33 +132,26 @@ class MultiProFitExpDevDiskSizeMagnitudePlot(MultiProFitExpDevSizeMagnitudePlot)
     MultiProFit ExpDev model.
     """
 
-    label_component: str = "Exponential"
-    name_component: str = "exp"
-
     def setDefaults(self):
         super().setDefaults()
         self._set_model_defaults(
-            name_model=self.name_model,
-            label_model=self.label_model,
-            name_component=self.name_component,
-            label_component=self.label_component,
+            name_model=MultiProFitCoaddExpDeVFitConfig.get_model_name_default(),
+            label_model=MultiProFitCoaddExpDeVFitConfig.get_model_name_full(),
+            name_component=component_names_default.exp,
+            label_component=MultiProFitCoaddExpFitConfig.get_model_name_full(),
         )
 
 
 class MultiProFitSersicSizeMagnitudePlot(MultiProFitSizeMagnitudePlot):
     """A size-magnitude plot for the MultiProFit Sersic model."""
 
-    label_model: str = "MPF Sersic"
-    name_model: str = "ser"
-    label_component: str = "Sersic"
-    name_component: str = "ser"
-
     def setDefaults(self):
         super().setDefaults()
         self.config_moments = moments_sersic
+        name_full_sersic = MultiProFitCoaddSersicFitConfig.get_model_name_full()
         self._set_model_defaults(
-            name_model=self.name_model,
-            label_model=self.label_model,
-            name_component=self.name_component,
-            label_component=self.label_component,
+            name_model=MultiProFitCoaddSersicFitConfig.get_model_name_default(),
+            label_model=name_full_sersic,
+            name_component=component_names_default.sersic,
+            label_component=name_full_sersic,
         )

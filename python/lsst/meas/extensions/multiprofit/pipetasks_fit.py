@@ -20,19 +20,26 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = (
+    "component_names_default",
+    "model_names_default",
     "MultiProFitCoaddPsfFitConfig",
     "MultiProFitCoaddPsfFitTask",
     "MultiProFitCoaddFitConfig",
+    "MultiProFitCoaddPointFitConfig",
     "MultiProFitCoaddSersicFitConfig",
     "MultiProFitCoaddSersicFitTask",
-    "MultiProFitCoaddGaussianFitConfig",
-    "MultiProFitCoaddGaussianFitTask",
-    "MultiProFitCoaddExponentialFitConfig",
-    "MultiProFitCoaddExponentialFitTask",
-    "MultiProFitCoaddDeVaucFitConfig",
-    "MultiProFitCoaddDeVaucFitTask",
+    "MultiProFitCoaddGaussFitConfig",
+    "MultiProFitCoaddGaussFitTask",
+    "MultiProFitCoaddExpFitConfig",
+    "MultiProFitCoaddExpFitTask",
+    "MultiProFitCoaddDeVFitConfig",
+    "MultiProFitCoaddDeVFitTask",
+    "MultiProFitCoaddExpDeVFitConfig",
+    "MultiProFitCoaddExpDeVFitTask",
 )
 
+from abc import abstractmethod
+from types import SimpleNamespace
 
 from lsst.multiprofit.componentconfig import (
     GaussianComponentConfig,
@@ -42,6 +49,7 @@ from lsst.multiprofit.componentconfig import (
 )
 from lsst.multiprofit.modelconfig import ModelConfig
 from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
+from lsst.pex.config import Field
 from lsst.pipe.tasks.fit_coadd_multiband import (
     CoaddMultibandFitConfig,
     CoaddMultibandFitConnections,
@@ -51,6 +59,24 @@ from lsst.pipe.tasks.fit_coadd_psf import CoaddPsfFitConfig, CoaddPsfFitConnecti
 
 from .fit_coadd_multiband import MultiProFitSourceTask, SourceTablePsfComponentsAction
 from .fit_coadd_psf import MultiProFitPsfTask
+
+component_names_default = SimpleNamespace(
+    point="point",
+    gauss="gauss",
+    exp="exp",
+    deV="deV",
+    sersic="sersic",
+)
+
+model_names_default = SimpleNamespace(
+    point="Point",
+    gauss="Gauss",
+    exp="Exp",
+    deV="DeV",
+    sersic="Sersic",
+    fixed_cen="FixedCen",
+    shapelet_psf="ShapeletPsf",
+)
 
 
 class MultiProFitCoaddPsfFitConfig(
@@ -78,37 +104,89 @@ class MultiProFitCoaddFitConfig(
 ):
     """Generic MultiProFit source fit task config."""
 
-    def add_pointsource(self):
-        group = self.fit_coadd_multiband.config_model.sources[""].component_groups[""]
-        group.components_gauss["ps"] = self.get_pointsource_component()
-        self.connections.name_table += "_ps"
+    # This needs to be set, ideally in setDefaults of subclasses
+    name_model = Field[str](doc="The name of the model", default=None)
+
+    def _get_source(self):
+        return next(iter(self.fit_coadd_multiband.config_model.sources))
+
+    def _get_component_group(self, source: SourceConfig | None = None):
+        if source is None:
+            source = self._get_source()
+        return source.next(iter(source.component_groups))
+
+    def add_point_source(self, name: str | None = None):
+        if name is None:
+            name = component_names_default.pointsource
+        source = self._get_source()
+        group = self._get_component_group(source=source)
+        if name in group.components_gauss:
+            raise RuntimeError(f"{name=} component already exists in {source=}")
+        group.components_gauss[name] = self.make_point_source_component()
+        self.connections.name_table += name.pointsource
 
     def finalize(
         self,
-        add_pointsource: bool = False,
+        add_point_source: bool = False,
         fix_centroid: bool = False,
         use_shapelet_psf: bool = False,
     ):
-        if add_pointsource:
-            self.add_pointsource()
+        if add_point_source:
+            self.add_point_source()
         if fix_centroid:
             self.fix_centroid()
         if use_shapelet_psf:
             self.use_shapelet_psf()
 
     def fix_centroid(self):
-        group = self.fit_coadd_multiband.config_model.sources[""].component_groups[""]
+        group = self._get_component_group()
         centroids = group.centroids["default"]
         centroids.x.fixed = True
         centroids.y.fixed = True
-        self.connections.name_table += "_fixedcen"
+        self.connections.name_table += model_names_default.fixed_cen
+
+    @classmethod
+    @abstractmethod
+    def get_model_name_default(cls) -> str:
+        """Return the default name for this model in table columns."""
+        raise NotImplementedError("Subclasses must implement get_model_name_default")
+
+    @classmethod
+    def get_model_name_full(cls) -> str:
+        """Return a longer, more descriptive name for the model."""
+        return cls.get_model_name_default()
+
+    @abstractmethod
+    def make_default_model_config(self) -> ModelConfig:
+        """Make a default configuration object for this model."""
+        raise NotImplementedError("Subclasses must implement make_default_model_config")
 
     @staticmethod
-    def get_pointsource_component():
+    def make_point_source_component():
         return GaussianComponentConfig(
             size_x=ParameterConfig(value_initial=0.0, fixed=True),
             size_y=ParameterConfig(value_initial=0.0, fixed=True),
             rho=ParameterConfig(value_initial=0.0, fixed=True),
+        )
+
+    @staticmethod
+    def make_sersic_component(**kwargs):
+        return SersicComponentConfig(
+            prior_axrat_stddev=0.8,
+            prior_size_stddev=0.3,
+            sersic_index=SersicIndexParameterConfig(**kwargs),
+        )
+
+    @staticmethod
+    def make_single_model_config(group: ComponentGroupConfig):
+        return ModelConfig(
+            sources={
+                "": SourceConfig(
+                    component_groups={
+                        "": group,
+                    }
+                )
+            }
         )
 
     def setDefaults(self):
@@ -117,10 +195,34 @@ class MultiProFitCoaddFitConfig(
         self.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         self.fit_coadd_multiband.bands_fit = ("u", "g", "r", "i", "z", "y")
 
+        self.fit_coadd_multiband.config_model = self.make_default_model_config()
+        self.name_model = self.get_model_name_default()
+        self.connections.name_table = self.name_model
+
     def use_shapelet_psf(self):
         self.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         self.drop_psf_connection = True
-        self.connections.name_table += "_shapelet"
+        self.connections.name_table += model_names_default.shapelet_psf
+
+
+class MultiProFitCoaddPointFitConfig(
+    MultiProFitCoaddFitConfig,
+    pipelineConnections=CoaddMultibandFitConnections,
+):
+    """MultiProFit single Sersic model fit task config."""
+
+    @classmethod
+    def get_model_name_default(cls) -> str:
+        return model_names_default.point
+
+    @classmethod
+    def get_model_name_full(cls) -> str:
+        return "Point Source"
+
+    def make_default_model_config(self) -> ModelConfig:
+        config_group = ComponentGroupConfig()
+        self.add_point_source()
+        return self.make_single_model_config(group=config_group)
 
 
 class MultiProFitCoaddSersicFitConfig(
@@ -129,7 +231,14 @@ class MultiProFitCoaddSersicFitConfig(
 ):
     """MultiProFit single Sersic model fit task config."""
 
-    def _rename_defaults(self, name_new: str, index_new: float | None = None, fix_index: bool = False):
+    def _rename_defaults(
+        self,
+        name_new: str,
+        name_model: str | None = None,
+        name_old: str | None = None,
+        index_new: float | None = None,
+        fix_index: bool = False,
+    ):
         """Rename the default Sersic component to something more specific.
 
         This is intended for fixed index models such as exponential and
@@ -139,44 +248,52 @@ class MultiProFitCoaddSersicFitConfig(
         ----------
         name_new
             The new name for the component.
+        name_model
+            The new name of the model. Default is to capitalize name_new.
+        name_old
+            The old name of the component. Default is to set to
+            component_names_default.sersic.
         index_new
             The initial value for the Sersic index.
         fix_index
             Whether the fix the index to the new value.
         """
-        comps = self.fit_coadd_multiband.config_model.sources[""].component_groups[""].components_sersic
-        comp_sersic = comps["ser"]
-        del comps["ser"]
+        if name_old is None:
+            name_old = component_names_default.sersic
+        if name_model is None:
+            name_model = name_new.capitalize()
+        group = self._get_component_group()
+        comps_sersic = group.components_sersic
+
+        if name_new in comps_sersic:
+            raise RuntimeError(f"{name_new=} is already in {comps_sersic=}")
+
+        comp_sersic = comps_sersic[name_old]
+        del comps_sersic[name_old]
         if index_new is not None:
             comp_sersic.sersic_index.value_initial = index_new
         if fix_index:
             comp_sersic.sersic_index.fixed = True
-        comps[name_new] = comp_sersic
-        self.connections.name_table = name_new
+        comp_sersic[name_new] = comp_sersic
 
-    def _set_model_config(self, add_ps: bool = False):
-        self.fit_coadd_multiband.config_model = ModelConfig(
-            sources={
-                "": SourceConfig(
-                    component_groups={
-                        "": ComponentGroupConfig(
-                            components_sersic={
-                                "ser": SersicComponentConfig(
-                                    prior_axrat_stddev=0.8,
-                                    prior_size_stddev=0.3,
-                                ),
-                            },
-                            components_gauss={"ps": self.get_pointsource_component()} if add_ps else {},
-                        )
-                    }
-                )
-            }
+        self.name_model = name_model
+        self.connections.name_table = name_model
+
+    @classmethod
+    def get_model_name_default(cls) -> str:
+        return model_names_default.sersic
+
+    @classmethod
+    def get_model_name_full(cls) -> str:
+        return "Sersic"
+
+    def make_default_model_config(self) -> ModelConfig:
+        config_group = ComponentGroupConfig(
+            components_sersic={
+                component_names_default.sersic: self.make_sersic_component(),
+            },
         )
-
-    def setDefaults(self):
-        super().setDefaults()
-        self.connections.name_table = "ser"
-        self._set_model_config()
+        return self.make_single_model_config(group=config_group)
 
 
 class MultiProFitCoaddSersicFitTask(CoaddMultibandFitTask):
@@ -186,99 +303,131 @@ class MultiProFitCoaddSersicFitTask(CoaddMultibandFitTask):
     _DefaultName = "multiProFitCoaddSersicFit"
 
 
-class MultiProFitCoaddGaussianFitConfig(
+class MultiProFitCoaddGaussFitConfig(
     MultiProFitCoaddSersicFitConfig,
     pipelineConnections=CoaddMultibandFitConnections,
 ):
     """MultiProFit single Gaussian model fit task config."""
 
+    @classmethod
+    def get_model_name_default(cls) -> str:
+        return model_names_default.gauss
+
+    @classmethod
+    def get_model_name_full(cls) -> str:
+        return "Gaussian"
+
     def setDefaults(self):
         super().setDefaults()
-        self._rename_defaults(name_new="gauss", index_new=0.5, fix_index=True)
+        self._rename_defaults(
+            name_new=component_names_default.gauss,
+            name_model=model_names_default.gauss,
+            index_new=0.5,
+            fix_index=True,
+        )
 
 
-class MultiProFitCoaddGaussianFitTask(CoaddMultibandFitTask):
+class MultiProFitCoaddGaussFitTask(CoaddMultibandFitTask):
     """MultiProFit single Gaussian model fit task."""
 
-    ConfigClass = MultiProFitCoaddGaussianFitConfig
-    _DefaultName = "multiProFitCoaddGaussianFit"
+    ConfigClass = MultiProFitCoaddGaussFitConfig
+    _DefaultName = "multiProFitCoaddGaussFit"
 
 
-class MultiProFitCoaddExponentialFitConfig(
+class MultiProFitCoaddExpFitConfig(
     MultiProFitCoaddSersicFitConfig,
     pipelineConnections=CoaddMultibandFitConnections,
 ):
     """MultiProFit single exponential model fit task config."""
 
+    @classmethod
+    def get_model_name_default(cls) -> str:
+        return model_names_default.exp
+
+    @classmethod
+    def get_model_name_full(cls) -> str:
+        return "Exponential"
+
     def setDefaults(self):
         super().setDefaults()
-        self._rename_defaults(name_new="exp", index_new=1.0, fix_index=True)
+        self._rename_defaults(
+            name_new=component_names_default.exp,
+            name_model=model_names_default.exp,
+            index_new=1.0,
+            fix_index=True,
+        )
 
 
-class MultiProFitCoaddExponentialFitTask(CoaddMultibandFitTask):
+class MultiProFitCoaddExpFitTask(CoaddMultibandFitTask):
     """MultiProFit single exponential model fit task."""
 
-    ConfigClass = MultiProFitCoaddExponentialFitConfig
-    _DefaultName = "multiProFitCoaddExponentialFit"
+    ConfigClass = MultiProFitCoaddExpFitConfig
+    _DefaultName = "multiProFitCoaddExpFit"
 
 
-class MultiProFitCoaddDeVaucFitConfig(
+class MultiProFitCoaddDeVFitConfig(
     MultiProFitCoaddSersicFitConfig,
     pipelineConnections=CoaddMultibandFitConnections,
 ):
     """MultiProFit single DeVaucouleurs model fit task config."""
 
+    @classmethod
+    def get_model_name_default(cls) -> str:
+        return model_names_default.deV
+
+    @classmethod
+    def get_model_name_full(cls) -> str:
+        return "de Vaucouleurs"
+
     def setDefaults(self):
         super().setDefaults()
-        self._rename_defaults(name_new="dev", index_new=4.0, fix_index=True)
+        self._rename_defaults(
+            name_new=component_names_default.deV,
+            name_model=model_names_default.deV,
+            index_new=4.0,
+            fix_index=True,
+        )
 
 
-class MultiProFitCoaddDeVaucFitTask(CoaddMultibandFitTask):
+class MultiProFitCoaddDeVFitTask(CoaddMultibandFitTask):
     """MultiProFit single DeVaucouleurs model fit task."""
 
-    ConfigClass = MultiProFitCoaddDeVaucFitConfig
-    _DefaultName = "multiProFitCoaddDeVaucFit"
+    ConfigClass = MultiProFitCoaddDeVFitConfig
+    _DefaultName = "multiProFitCoaddDeVFit"
 
 
-class MultiProFitCoaddExpDevFitConfig(
+class MultiProFitCoaddExpDeVFitConfig(
     MultiProFitCoaddFitConfig,
     pipelineConnections=CoaddMultibandFitConnections,
 ):
-    """MultiProFit single Exp-Dev model fit task config."""
+    """MultiProFit single Exponential+DeVaucouleurs model fit task config."""
 
-    def _set_model_config(self, add_ps: bool = False):
-        self.fit_coadd_multiband.config_model = ModelConfig(
-            sources={
-                "": SourceConfig(
-                    component_groups={
-                        "": ComponentGroupConfig(
-                            components_sersic={
-                                "exp": SersicComponentConfig(
-                                    prior_axrat_stddev=0.8,
-                                    prior_size_stddev=0.3,
-                                    sersic_index=SersicIndexParameterConfig(value_initial=1.0, fixed=True),
-                                ),
-                                "dev": SersicComponentConfig(
-                                    prior_axrat_stddev=0.8,
-                                    prior_size_stddev=0.3,
-                                    sersic_index=SersicIndexParameterConfig(value_initial=4.0, fixed=True),
-                                ),
-                            },
-                            components_gauss={"ps": self.get_pointsource_component()} if add_ps else {},
-                        )
-                    }
-                )
-            }
+    @classmethod
+    def get_model_name_default(cls) -> str:
+        return f"{model_names_default.exp}{model_names_default.deV}"
+
+    @classmethod
+    def get_model_name_full(cls) -> str:
+        return "Exponential + de Vaucouleurs"
+
+    def make_default_model_config(self) -> ModelConfig:
+        config_group = ComponentGroupConfig(
+            components_sersic={
+                component_names_default.exp: self.make_sersic_component(value_initial=1.0, fixed=True),
+                component_names_default.deV: self.make_sersic_component(value_initial=4.0, fixed=True),
+            },
         )
+        return self.make_single_model_config(group=config_group)
 
     def setDefaults(self):
         super().setDefaults()
-        self._set_model_config()
-        self.connections.name_table = "expdev"
+        self.fit_coadd_multiband.config_model = self.make_default_model_config()
+        self.name_model = self.get_model_name_default()
+        self.connections.name_table = self.name_model
 
 
-class MultiProFitCoaddExpDevFitTask(CoaddMultibandFitTask):
-    """MultiProFit single Exp-Dev model fit task."""
+class MultiProFitCoaddExpDeVFitTask(CoaddMultibandFitTask):
+    """MultiProFit single ExpDeV model fit task."""
 
-    ConfigClass = MultiProFitCoaddExpDevFitConfig
-    _DefaultName = "multiProFitCoaddExpDevFit"
+    ConfigClass = MultiProFitCoaddExpDeVFitConfig
+    _DefaultName = "multiProFitCoaddExpDeVFit"

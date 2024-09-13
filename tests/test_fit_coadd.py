@@ -154,30 +154,6 @@ def source_fit_ser_config():
 
 
 @pytest.fixture(scope="module")
-def source_fit_ser_config():
-    config = fitCMB.MultiProFitSourceConfig(
-        bands_fit=(band,),
-        config_model=ModelConfig(
-            sources={
-                "": SourceConfig(
-                    component_groups={
-                        "": ComponentGroupConfig(
-                            components_sersic={
-                                "ser": SersicComponentConfig(
-                                    sersic_index=SersicIndexParameterConfig(value_initial=1.0),
-                                )
-                            },
-                        ),
-                    }
-                ),
-            },
-        ),
-    )
-    config.validate()
-    return config
-
-
-@pytest.fixture(scope="module")
 def source_fit_exp_fixedcen_results(
     catalog,
     exposure,
