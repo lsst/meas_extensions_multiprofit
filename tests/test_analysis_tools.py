@@ -19,33 +19,37 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.meas.extensions.multiprofit.analysis_tools import MultiProFitSersicSizeMagnitudePlot
 import pytest
 
+try:
+    from lsst.meas.extensions.multiprofit.analysis_tools import MultiProFitSersicSizeMagnitudePlot
 
-@pytest.fixture(scope="module")
-def kwargs_plot():
-    kwargs = dict(
-        xLims=(18, 25),
-        yLims=(-3, 4),
-    )
-    return kwargs
+    has_analysis_tools = True
+except ImportError:
+    has_analysis_tools = False
 
+if has_analysis_tools:
 
-@pytest.fixture(scope="module")
-def tool_sersic(kwargs_plot):
-    atool = MultiProFitSersicSizeMagnitudePlot()
-    atool.finalize()
-    return atool
+    @pytest.fixture(scope="module")
+    def kwargs_plot():
+        kwargs = dict(
+            xLims=(18, 25),
+            yLims=(-3, 4),
+        )
+        return kwargs
 
+    @pytest.fixture(scope="module")
+    def tool_sersic(kwargs_plot):
+        atool = MultiProFitSersicSizeMagnitudePlot()
+        atool.finalize()
+        return atool
 
-@pytest.fixture(scope="module")
-def data_sersic(tool_sersic):
-    schema = tool_sersic.getInputSchema()
-    data = {key: [] for key in schema}
-    return data
+    @pytest.fixture(scope="module")
+    def data_sersic(tool_sersic):
+        schema = tool_sersic.getInputSchema()
+        data = {key: [] for key in schema}
+        return data
 
-
-def test_psf_fits(tool_sersic, data_sersic):
-    assert tool_sersic is not None
-    assert len(data_sersic) > 0
+    def test_psf_fits(tool_sersic, data_sersic):
+        assert tool_sersic is not None
+        assert len(data_sersic) > 0
