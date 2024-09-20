@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["ModelDRebuilder", "PatchModelDMatches", "PatchCoaddRebuilder"]
+__all__ = ["ModelRebuilder", "PatchModelMatches", "PatchCoaddRebuilder"]
 
 from functools import cached_property
 from typing import Iterable
@@ -142,7 +142,7 @@ def get_radec_unit(table: astropy.table.Table, coord_ra: str, coord_dec: str, de
     return unit_ra
 
 
-class DataLoader(pydantic.BaseModelD):
+class DataLoader(pydantic.BaseModel):
     """A collection of data that can be used to rebuild models."""
 
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, frozen=True)
@@ -257,7 +257,7 @@ class DataLoader(pydantic.BaseModelD):
         return observations
 
 
-class ModelDRebuilder(DataLoader):
+class ModelRebuilder(DataLoader):
     """A rebuilder of MultiProFit models from their inputs and best-fit
     parameter values.
     """
@@ -292,7 +292,7 @@ class ModelDRebuilder(DataLoader):
         Returns
         -------
         rebuilder
-            A ModelDRebuilder instance initialized with the necessary kwargs.
+            A ModelRebuilder instance initialized with the necessary kwargs.
         """
         if dataId is None:
             quantum = next(iter(quantumgraph.outputQuanta)).quantum
@@ -398,22 +398,22 @@ class ModelDRebuilder(DataLoader):
             param.value = row[f"{prefix}{key}"] + offsets.get(type(param), 0.0)
 
 
-class PatchModelDMatches(pydantic.BaseModelD):
+class PatchModelMatches(pydantic.BaseModel):
     """Storage for MultiProFit tables matched to a reference catalog."""
 
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
     matches: astropy.table.Table | None = pydantic.Field(doc="Catalogs of matches")
     quantumgraph: QuantumGraph | None = pydantic.Field(doc="Quantum graph for fit task")
-    rebuilder: DataLoader | ModelDRebuilder | None = pydantic.Field(doc="MultiProFit object model rebuilder")
+    rebuilder: DataLoader | ModelRebuilder | None = pydantic.Field(doc="MultiProFit object model rebuilder")
 
 
-class PatchCoaddRebuilder(pydantic.BaseModelD):
+class PatchCoaddRebuilder(pydantic.BaseModel):
     """A rebuilder for patch-level coadd catalog/exposure fits."""
 
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
-    matches: dict[str, PatchModelDMatches] = pydantic.Field("ModelD matches by algorithm name")
+    matches: dict[str, PatchModelMatches] = pydantic.Field("Model matches by algorithm name")
     name_model_ref: str = pydantic.Field(doc="The name of the reference model in matches")
     objects: astropy.table.Table = pydantic.Field(doc="Object table")
     objects_multiprofit: astropy.table.Table | None = pydantic.Field(doc="Object table for MultiProFit fits")
@@ -555,13 +555,13 @@ class PatchCoaddRebuilder(pydantic.BaseModelD):
             matched["patch"][np.where(unmatched)[0]] = patches_unmatched
             matched = matched[matched["patch"] == patch]
             rebuilder = (
-                ModelDRebuilder.from_quantumGraph(butler, quantumgraph, dataId=dataId)
+                ModelRebuilder.from_quantumGraph(butler, quantumgraph, dataId=dataId)
                 if is_mpf
                 else DataLoader.from_butler(
                     butler, data_id=dataId, bands=bands, collections=[collection_merged]
                 )
             )
-            matches_name[name] = PatchModelDMatches(
+            matches_name[name] = PatchModelMatches(
                 matches=matched, quantumgraph=quantumgraph, rebuilder=rebuilder
             )
         return cls(
