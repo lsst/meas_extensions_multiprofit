@@ -19,23 +19,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from functools import cached_property
 import logging
 import math
-from functools import cached_property
 from typing import Any, ClassVar, Iterable, Mapping, Sequence
 
+from astropy.table import Table
+import lsst.afw.geom
+from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 import lsst.gauss2d as g2
 import lsst.gauss2d.fit as g2f
-import lsst.pex.config as pexConfig
-import lsst.pipe.base as pipeBase
-import lsst.pipe.tasks.fit_coadd_multiband as fitMB
-import lsst.utils.timer as utilsTimer
-import numpy as np
-import pydantic
-from astropy.table import Table
-from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 from lsst.multiprofit.errors import NoDataError, PsfRebuildFitFlagError
-from lsst.multiprofit.utils import get_params_uniq, set_config_from_dict
 from lsst.multiprofit.fitting.fit_psf import CatalogPsfFitterConfig, CatalogPsfFitterConfigData
 from lsst.multiprofit.fitting.fit_source import (
     CatalogExposureSourcesABC,
@@ -43,7 +37,14 @@ from lsst.multiprofit.fitting.fit_source import (
     CatalogSourceFitterConfig,
     CatalogSourceFitterConfigData,
 )
+from lsst.multiprofit.utils import get_params_uniq, set_config_from_dict
+import lsst.pex.config as pexConfig
 from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
+import lsst.pipe.base as pipeBase
+import lsst.pipe.tasks.fit_coadd_multiband as fitMB
+import lsst.utils.timer as utilsTimer
+import numpy as np
+import pydantic
 
 from .errors import IsParentError, NotPrimaryError
 from .utils import get_spanned_image
@@ -189,11 +190,20 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         doc="The action to return PSF component values from catalogs, if implemented",
         default=None,
     )
-    bands_fit = pexConfig.ListField(
-        dtype=str,
+    bands_fit = pexConfig.ListField[str](
         default=[],
         doc="list of bandpass filters to fit",
         listCheck=lambda x: (len(x) > 0) and (len(set(x)) == len(x)),
+    )
+    columns_copy = pexConfig.DictField[str, str](
+        doc="Mapping of input/output column names to copy from the input"
+        "multiband catalog to the output fit catalog.",
+        default={
+            "base_ClassificationExtendedness_value": "refExtendedness",
+            "base_ClassificationExtendedness_flag": "refExtendedness_flag",
+            "detect_isPatchInner": "detect_isPatchInner",
+        },
+        dictCheck=lambda x: len(set(x.values())) == len(x.values()),
     )
     mask_names_zero = pexConfig.ListField[str](
         doc="Mask bits to mask out",
@@ -288,6 +298,9 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
                 ellipse_out.sigma_y = ellipse_in.sigma_y
                 ellipse_out.rho = ellipse_in.rho
                 fluxes[idx_comp] = gaussian.integral.value
+            # Apparently negative fluxes are possible. Not much can be done to
+            # fix that but set them to a tiny value (zero might work)
+            fluxes = np.clip(fluxes, 1e-3, np.inf)
             flux_total = sum(fluxes)
             if is_frac:
                 flux_remaining = 1.0
@@ -395,17 +408,41 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
 
 
 class MultiProFitSourceFitter(CatalogSourceFitterABC):
-    """A MultiProFit source fitter."""
+    """A MultiProFit source fitter.
 
-    def __init__(self, **kwargs: Any):
-        errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
-        # This ensures that all of these errors are caught as expected, but...
-        # It means you can't turn them off even when specifying errors_expected
-        # If there is a use case to disable any of them, this can be changed
-        for error_catalog in (IsParentError, NoDataError, NotPrimaryError, PsfRebuildFitFlagError):
-            if error_catalog not in errors_expected:
-                errors_expected[error_catalog] = error_catalog.column_name()
-        super().__init__(errors_expected=errors_expected)
+    Parameters
+    ----------
+    wcs
+        A WCS solution that applies to all exposures.
+    errors_expected
+        A dictionary of exceptions that are expected to sometimes be raised
+        during processing (e.g. for missing data) keyed by the name of the
+        flag column used to record the failure.
+    add_missing_errors
+        Whether to add all of the standard MultiProFit errors with default
+        column names to errors_expected, if not already present.
+    **kwargs
+        Keyword arguments to pass to the superclass constructor.
+    """
+
+    wcs: lsst.afw.geom.SkyWcs = pydantic.Field(
+        title="The WCS object to use to convert pixel coordinates to RA/dec",
+    )
+
+    def __init__(
+        self,
+        wcs: lsst.afw.geom.SkyWcs,
+        errors_expected: dict[str, Exception] | None = None,
+        add_missing_errors: bool = True,
+        **kwargs: Any,
+    ):
+        if errors_expected is None:
+            errors_expected = {}
+        if add_missing_errors:
+            for error_catalog in (IsParentError, NoDataError, NotPrimaryError, PsfRebuildFitFlagError):
+                if error_catalog not in errors_expected:
+                    errors_expected[error_catalog] = error_catalog.column_name()
+        super().__init__(wcs=wcs, errors_expected=errors_expected, **kwargs)
 
     def copy_centroid_errors(
         self,
@@ -424,7 +461,7 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
     def get_model_radec(self, source: Mapping[str, Any], cen_x: float, cen_y: float):
         # no extra conversions are needed here - cen_x, cen_y are in catalog
         # coordinates already
-        ra, dec = self.catexps[0].exposure.wcs.pixelToSky(cen_x, cen_y)
+        ra, dec = self.wcs.pixelToSky(cen_x, cen_y)
         return ra.asDegrees(), dec.asDegrees()
 
     def initialize_model(
@@ -572,13 +609,17 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
             elif isinstance(prior, g2f.ShapePrior):
                 prior.prior_size.mean_parameter.value = size_major
 
-    def make_CatalogExposurePsfs(self, catexp: fitMB.CatalogExposureInputs) -> CatalogExposurePsfs:
+    def make_CatalogExposurePsfs(
+        self,
+        catexp: fitMB.CatalogExposureInputs,
+        config: MultiProFitSourceConfig,
+    ) -> CatalogExposurePsfs:
         catexp_psf = CatalogExposurePsfs(
             # dataclasses.asdict(catexp)_makes a recursive deep copy.
             # That must be avoided.
             **{key: getattr(catexp, key) for key in catexp.__dataclass_fields__.keys()},
             channel=g2f.Channel.get(catexp.band),
-            config_fit=self.config,
+            config_fit=config,
         )
         return catexp_psf
 
@@ -626,6 +667,8 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
             A multi-band, indexable source catalog.
         catexps : list[`CatalogExposureInputs`]
             Catalog-exposure-PSF model tuples to fit source models for.
+        fitter
+            The fitter instance to use. Default-initialized if not provided.
         **kwargs
             Additional keyword arguments to pass to self.fit.
 
@@ -635,19 +678,23 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
             A table with fit parameters for the PSF model at the location
             of each source.
         """
-        if fitter is None:
-            fitter = MultiProFitSourceFitter()
         n_catexps = len(catexps)
+        if n_catexps == 0:
+            raise ValueError("Must provide at least one catexp")
+        if fitter is None:
+            fitter = MultiProFitSourceFitter(wcs=catexps[0].exposure.wcs)
         catexps_conv: list[CatalogExposurePsfs] = [None] * n_catexps
         channels: list[g2f.Channel] = [None] * n_catexps
         for idx, catexp in enumerate(catexps):
             if not isinstance(catexp, CatalogExposurePsfs):
-                catexp = fitter.make_CatalogExposurePsfs(catexp)
+                catexp = fitter.make_CatalogExposurePsfs(catexp, config=self.config)
             catexps_conv[idx] = catexp
             channels[idx] = catexp.channel
-        self.catexps = catexps
         config_data = CatalogSourceFitterConfigData(channels=channels, config=self.config)
         catalog = fitter.fit(
             catalog_multi=catalog_multi, catexps=catexps_conv, config_data=config_data, **kwargs
         )
+        for name_in, name_out in self.config.columns_copy.items():
+            catalog[name_out] = catalog_multi[name_in]
+            catalog[name_out].description = catalog_multi.schema.find(name_in).field.getDoc()
         return pipeBase.Struct(output=astropy_to_arrow(catalog))

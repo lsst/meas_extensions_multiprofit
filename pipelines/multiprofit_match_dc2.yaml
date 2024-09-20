@@ -1,0 +1,15 @@
+description: |
+  Default configuration for matching objectTable_tract_multiprofit to DC2 truth_summary
+parameters:
+  model_prefix: "mpf_Sersic"
+tasks:
+  matchMultiprofit:
+    class: lsst.meas.extensions.multiprofit.pipetasks_match.MultiProFitMatchTractCatalogDC2Task
+    config:
+      python: |
+        config.finalize(model_prefix=parameters.model_prefix)
+  diffMatchedMultiprofit:
+    class: lsst.meas.extensions.multiprofit.pipetasks_match.MultiProfitDiffMatchedTractCatalogTask
+    config:
+      python: |
+        config.finalize(model_prefixes=[parameters.model_prefix])

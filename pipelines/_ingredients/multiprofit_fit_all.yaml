@@ -1,0 +1,62 @@
+description: |
+  Fit a double Gaussian PSF model and various object models with MultiProFit
+parameters:
+  add_point_source: False
+  fix_centroid: False
+  use_shapelet_psf: False
+tasks:
+  fit_psf_multiprofit:
+    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddPsfFitTask
+    config:
+      python: |
+        from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddPsfFitTask
+  fit_src_gauss_multiprofit:
+    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddGaussianFitTask
+    config:
+      python: |
+        from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddGaussianFitTask
+        config.finalize(
+          add_point_source=parameters.add_point_source,
+          fix_centroid=parameters.fix_centroid,
+          use_shapelet_psf=parameters.use_shapelet_psf,
+        )
+  fit_src_exp_multiprofit:
+    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddExponentialFitTask
+    config:
+      python: |
+        from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddExponentialFitTask
+        config.finalize(
+          add_point_source=parameters.add_point_source,
+          fix_centroid=parameters.fix_centroid,
+          use_shapelet_psf=parameters.use_shapelet_psf,
+        )
+  fit_src_dev_multiprofit:
+    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddDeVaucFitTask
+    config:
+      python: |
+        from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddDeVaucFitTask
+        config.finalize(
+          add_point_source=parameters.add_point_source,
+          fix_centroid=parameters.fix_centroid,
+          use_shapelet_psf=parameters.use_shapelet_psf,
+        )
+  fit_src_ser_multiprofit:
+    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddSersicFitTask
+    config:
+      python: |
+        from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddSersicFitTask
+        config.finalize(
+          add_point_source=parameters.add_point_source,
+          fix_centroid=parameters.fix_centroid,
+          use_shapelet_psf=parameters.use_shapelet_psf,
+        )
+  fit_src_expdev_multiprofit:
+    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddExpDevFitTask
+    config:
+      python: |
+        from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddExpDevFitTask
+        config.finalize(
+          add_point_source=parameters.add_point_source,
+          fix_centroid=parameters.fix_centroid,
+          use_shapelet_psf=parameters.use_shapelet_psf,
+        )

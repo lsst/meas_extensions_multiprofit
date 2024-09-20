@@ -21,15 +21,13 @@
 
 import os
 
-import lsst.gauss2d.fit as g2f
-import lsst.meas.extensions.multiprofit.fit_coadd_multiband as fitCMB
-import lsst.meas.extensions.multiprofit.fit_coadd_psf as fitCP
-import numpy as np
-import pytest
 from astropy.table import Table
 from lsst.afw.image import ExposureF
 from lsst.afw.table import SourceCatalog
 from lsst.daf.butler.formatters.parquet import arrow_to_astropy
+import lsst.gauss2d.fit as g2f
+import lsst.meas.extensions.multiprofit.fit_coadd_multiband as fitCMB
+import lsst.meas.extensions.multiprofit.fit_coadd_psf as fitCP
 from lsst.multiprofit.componentconfig import (
     CentroidConfig,
     GaussianComponentConfig,
@@ -37,13 +35,16 @@ from lsst.multiprofit.componentconfig import (
     SersicComponentConfig,
     SersicIndexParameterConfig,
 )
+from lsst.multiprofit.fitting.fit_psf import CatalogPsfFitterConfig
 from lsst.multiprofit.modelconfig import ModelConfig
 from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
-from lsst.multiprofit.fitting.fit_psf import CatalogPsfFitterConfig
 from lsst.pipe.tasks.fit_coadd_psf import CatalogExposurePsf
+import numpy as np
+import pytest
 
-ROOT = os.environ.get("TESTDATA_CI_IMSIM_MINI", None)
+ROOT = os.environ.get("TESTDATA_CI_IMSIM_MINI_DIR", None)
 has_files = (ROOT is not None) and os.path.isdir(ROOT)
+
 filename_cat = os.path.join(ROOT, "data", "deepCoadd_meas_0_24_r_2k_ci_imsim.fits") if has_files else None
 filename_exp = os.path.join(ROOT, "data", "deepCoadd_calexp_0_24_r_2k_ci_imsim.fits") if has_files else None
 
@@ -126,39 +127,17 @@ def source_fit_ser_config():
                 "": SourceConfig(
                     component_groups={
                         "": ComponentGroupConfig(
-                            components_gauss={
-                                "ps": GaussianComponentConfig(
-                                    size_x=ParameterConfig(value_initial=0.0, fixed=True),
-                                    size_y=ParameterConfig(value_initial=0.0, fixed=True),
-                                    rho=ParameterConfig(value_initial=0.0, fixed=True),
-                                )
-                            }
-                            if include_ps
-                            else {},
-                            components_sersic={
-                                "ser": SersicComponentConfig(
-                                    sersic_index=SersicIndexParameterConfig(value_initial=1.0),
-                                )
-                            },
-                        ),
-                    }
-                ),
-            },
-        ),
-    )
-    config.validate()
-    return config
-
-
-@pytest.fixture(scope="module")
-def source_fit_ser_config():
-    config = fitCMB.MultiProFitSourceConfig(
-        bands_fit=(band,),
-        config_model=ModelConfig(
-            sources={
-                "": SourceConfig(
-                    component_groups={
-                        "": ComponentGroupConfig(
+                            components_gauss=(
+                                {
+                                    "ps": GaussianComponentConfig(
+                                        size_x=ParameterConfig(value_initial=0.0, fixed=True),
+                                        size_y=ParameterConfig(value_initial=0.0, fixed=True),
+                                        rho=ParameterConfig(value_initial=0.0, fixed=True),
+                                    )
+                                }
+                                if include_ps
+                                else {}
+                            ),
                             components_sersic={
                                 "ser": SersicComponentConfig(
                                     sersic_index=SersicIndexParameterConfig(value_initial=1.0),
@@ -181,7 +160,7 @@ def source_fit_exp_fixedcen_results(
     psf_fit_results,
     psf_fit_config,
     source_fit_exp_fixedcen_config,
-):
+) -> Table:
     if not has_files:
         return None
     if not do_exp_fixedcen:
@@ -196,11 +175,17 @@ def source_fit_exp_fixedcen_results(
     )
     task = fitCMB.MultiProFitSourceTask(config=source_fit_exp_fixedcen_config)
     results = task.run(catalog_multi=catalog, catexps=[catexp])
-    return results.output.to_pandas()
+    return arrow_to_astropy(results.output)
 
 
 @pytest.fixture(scope="module")
-def source_fit_ser_results(catalog, exposure, psf_fit_results, psf_fit_config, source_fit_ser_config):
+def source_fit_ser_results(
+    catalog,
+    exposure,
+    psf_fit_results,
+    psf_fit_config,
+    source_fit_ser_config,
+) -> Table:
     if not has_files:
         return None
     catexp = fitCMB.CatalogExposurePsfs(
@@ -213,7 +198,7 @@ def source_fit_ser_results(catalog, exposure, psf_fit_results, psf_fit_config, s
     )
     task = fitCMB.MultiProFitSourceTask(config=source_fit_ser_config)
     results = task.run(catalog_multi=catalog, catexps=[catexp])
-    return results.output.to_pandas()
+    return arrow_to_astropy(results.output)
 
 
 @pytest.fixture(scope="module")
@@ -223,7 +208,7 @@ def source_fit_ser_shapelet_psf_results(
     psf_fit_results,
     psf_fit_config,
     source_fit_ser_config,
-):
+) -> Table:
     if not has_files:
         return None
     table_psf = Table(
@@ -240,7 +225,7 @@ def source_fit_ser_shapelet_psf_results(
     source_fit_ser_config.action_psf = fitCMB.SourceTablePsfComponentsAction()
     task = fitCMB.MultiProFitSourceTask(config=source_fit_ser_config)
     results = task.run(catalog_multi=catalog, catexps=[catexp])
-    return results.output.to_pandas()
+    return arrow_to_astropy(results.output)
 
 
 @pytest.fixture(scope="module")
@@ -268,6 +253,10 @@ def test_source_fits(source_fits_all):
     for results in source_fits_all:
         if results is not None:
             assert len(results) == n_test
-            good = results[~results["mpf_unknown_flag"]]
-            assert all(good.values.flat > -np.Inf)
+            prefix = results.meta["config"]["prefix_column"]
+            good = ~results[f"{prefix}unknown_flag"]
+            assert np.sum(~good) == 0
+            for column in results.columns:
+                if column.startswith(prefix):
+                    assert column and (np.sum(~np.isfinite(results[column][good])) == 0)
             # TODO: Determine what checks can be done against previous values

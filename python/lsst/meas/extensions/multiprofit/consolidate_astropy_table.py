@@ -23,10 +23,10 @@ from collections import defaultdict
 
 import astropy.table as apTab
 import lsst.pex.config as pexConfig
+from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as connectionTypes
 import numpy as np
-from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
 
 
 class CatalogAction(ConfigurableAction):
@@ -275,9 +275,11 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
         for name, data_name in data.items():
             config_input = self.config.inputs[name]
             tables = [
-                apTab.hstack([data_name[patch][band] for band in bands_sorted], join_type="exact")
-                if not config_input.is_multiband
-                else data_name[patch][band_null]
+                (
+                    apTab.hstack([data_name[patch][band] for band in bands_sorted], join_type="exact")
+                    if not config_input.is_multiband
+                    else data_name[patch][band_null]
+                )
                 for patch in (patches_ref if not config_input.is_multipatch else patches_null)
             ]
             data[name] = tables[0] if (len(tables) == 1) else apTab.vstack(tables, join_type="exact")

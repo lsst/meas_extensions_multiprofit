@@ -1,9 +1,8 @@
 description: |
   Matched difference (multiprofit vs reference) plots/metrics
 parameters:
-  label_model: "MPF PS+Gauss"
-  name_model: "psgauss"
-  bands: ["g", "r", "i"]
+  label_model: "MPF Sersic"
+  name_model: "Sersic"
   mag_x_min: 17
   mag_x_max: 29
   mag_diff_min: -1000
@@ -15,10 +14,9 @@ parameters:
   pos_chi_min: -5
   pos_chi_max: 5
 tasks:
-  diff_matched_analysis:
+  analyzeDiffMatchedMultiprofit:
     class: lsst.analysis.tools.tasks.DiffMatchedAnalysisTask
     config:
-      bands: parameters.bands
       connections.data: matched_truth_summary_objectTable_tract_multiprofit
       connections.outputName: diff_matched_truth_summary_objectTable_tract_multiprofit
 
@@ -38,6 +36,7 @@ tasks:
       atools.matchedRefPositionRaDiff.coord_label: R.A.
       atools.matchedRefPositionRaDiff.coord_meas: coord_ra
       atools.matchedRefPositionRaDiff.coord_ref: refcat_ra
+      atools.matchedRefPositionRaDiff.coord_ref_cos: refcat_dec
       atools.matchedRefPositionRaDiff.scale_factor: 3600000
       atools.matchedRefPositionRaDiff.produce.plot.xLims: lims_mag_x
       atools.matchedRefPositionRaDiff.produce.plot.yLims: lims_pos_diff
@@ -61,6 +60,7 @@ tasks:
           name_flux = parameters.label_model,
           key_flux = f"mpf_{parameters.name_model}_{{band}}_flux",
           key_flux_error = f"mpf_{parameters.name_model}_{{band}}_flux_err",
+          name_flux_short = parameters.name_model,
         )
         coord_ra = f"mpf_{parameters.name_model}_cen_ra"
         coord_dec = f"mpf_{parameters.name_model}_cen_dec"
