@@ -202,6 +202,7 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
             "base_ClassificationExtendedness_value": "refExtendedness",
             "base_ClassificationExtendedness_flag": "refExtendedness_flag",
             "detect_isPatchInner": "detect_isPatchInner",
+            "detect_isPrimary": "detect_isPrimary",
         },
         dictCheck=lambda x: len(set(x.values())) == len(x.values()),
     )
