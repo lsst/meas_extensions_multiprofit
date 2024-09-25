@@ -42,6 +42,7 @@ import numpy as np
 import pydantic
 
 from .fit_coadd_multiband import (
+    CatalogExposurePsfs,
     CatalogExposureSourcesABC,
     CatalogSourceFitterConfigData,
     MultiProFitSourceConfig,
