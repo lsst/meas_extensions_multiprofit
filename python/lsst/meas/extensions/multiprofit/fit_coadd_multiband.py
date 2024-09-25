@@ -732,6 +732,9 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
     ConfigClass: ClassVar = MultiProFitSourceConfig
     _DefaultName: ClassVar = "multiProFitSource"
 
+    def get_fitter_default(self, wcs: lsst.afw.geom.SkyWcs):
+        return MultiProFitSourceFitter(wcs=wcs)
+
     @utilsTimer.timeMethod
     def run(
         self,
@@ -763,7 +766,7 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
         if n_catexps == 0:
             raise ValueError("Must provide at least one catexp")
         if fitter is None:
-            fitter = MultiProFitSourceFitter(wcs=catexps[0].exposure.wcs)
+            fitter = self.get_fitter_default(wcs=catexps[0].exposure.wcs)
         catexps_conv: list[CatalogExposurePsfs] = [None] * n_catexps
         channels: list[g2f.Channel] = [None] * n_catexps
         config = cast(self.config, MultiProFitSourceConfig)
