@@ -21,6 +21,7 @@
 
 from typing import ClassVar
 
+from lsst.afw.detection import InvalidPsfError
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 import lsst.gauss2d.fit as g2f
 from lsst.multiprofit import (
@@ -37,7 +38,6 @@ from lsst.multiprofit.fitting.fit_psf import (
     CatalogPsfFitterConfigData,
 )
 import lsst.pex.config as pexConfig
-from lsst.pex.exceptions import InvalidParameterError
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.fit_coadd_psf as fitCP
 import lsst.utils.timer as utilsTimer
@@ -78,7 +78,7 @@ class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
                 )
             }
         )
-        self.flag_errors = {"no_inputs_flag": "InvalidParameterError"}
+        self.flag_errors = {"no_inputs_flag": "InvalidPsfError"}
 
 
 class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
@@ -99,9 +99,9 @@ class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
 
     def __init__(self, **kwargs):
         errors_expected = {} if "errors_expected" not in kwargs else kwargs.pop("errors_expected")
-        if InvalidParameterError not in errors_expected:
+        if InvalidPsfError not in errors_expected:
             # Cannot compute CoaddPsf at point (x, y)
-            errors_expected[InvalidParameterError] = "no_inputs_flag"
+            errors_expected[InvalidPsfError] = "no_inputs_flag"
         CatalogPsfFitter.__init__(self, errors_expected=errors_expected)
         fitCP.CoaddPsfFitSubTask.__init__(self, **kwargs)
 
