@@ -190,11 +190,6 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         doc="The action to return PSF component values from catalogs, if implemented",
         default=None,
     )
-    bands_fit = pexConfig.ListField[str](
-        default=[],
-        doc="list of bandpass filters to fit",
-        listCheck=lambda x: (len(x) > 0) and (len(set(x)) == len(x)),
-    )
     columns_copy = pexConfig.DictField[str, str](
         doc="Mapping of input/output column names to copy from the input"
         "multiband catalog to the output fit catalog.",
