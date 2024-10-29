@@ -9,7 +9,7 @@ tasks:
       python: |
         config.finalize(model_prefix=parameters.model_prefix)
   diffMatchedMultiprofit:
-    class: lsst.meas.extensions.multiprofit.pipetasks_match.MultiProfitDiffMatchedTractCatalogTask
+    class: lsst.meas.extensions.multiprofit.pipetasks_match.MultiProFitDiffMatchedTractCatalogTask
     config:
       python: |
         config.finalize(model_prefixes=[parameters.model_prefix])

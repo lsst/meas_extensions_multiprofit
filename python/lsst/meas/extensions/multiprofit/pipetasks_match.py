@@ -195,7 +195,7 @@ class MultiProFitDiffMatchedTractCatalogConfig(
         ]
 
 
-class MultiProfitDiffMatchedTractCatalogTask(DiffMatchedTractCatalogTask):
+class MultiProFitDiffMatchedTractCatalogTask(DiffMatchedTractCatalogTask):
 
     _DefaultName = "multiProfitDiffMatchedTractCatalogTask"
     ConfigClass = MultiProFitDiffMatchedTractCatalogConfig

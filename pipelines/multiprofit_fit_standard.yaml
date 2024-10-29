@@ -5,8 +5,8 @@ parameters:
   fix_centroid: False
   use_shapelet_psf: False
 tasks:
-  fitDeepCoaddPsfMultiprofit: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddPsfFitTask
-  fitDeblendedObjectsSersicMultiprofit:
+  fitDeepCoaddPsfGaussians: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddPsfFitTask
+  fitDeblendedObjectsSersic:
     class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddSersicFitTask
     config:
       python: |
