@@ -19,12 +19,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = (
+    "PsfFitSuccessActionBase",
+    "PsfComponentsActionBase",
+    "SourceTablePsfFitSuccessAction",
+    "SourceTablePsfComponentsAction",
+    "MagnitudeDependentSizePriorConfig",
+    "MultiProFitSourceFitter",
+    "MultiProFitSourceConfig",
+    "MultiProFitSourceTask",
+)
+
+from abc import abstractmethod, ABC
 from functools import cached_property
 import logging
 import math
 from typing import Any, ClassVar, Iterable, Mapping, Sequence
 
 from astropy.table import Table
+import astropy.units as u
 import lsst.afw.geom
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 import lsst.gauss2d as g2
@@ -37,7 +50,8 @@ from lsst.multiprofit.fitting.fit_source import (
     CatalogSourceFitterConfig,
     CatalogSourceFitterConfigData,
 )
-from lsst.multiprofit.utils import get_params_uniq, set_config_from_dict
+from lsst.multiprofit.modeller import Model
+from lsst.multiprofit.utils import frozen_arbitrary_allowed_config, get_params_uniq, set_config_from_dict
 import lsst.pex.config as pexConfig
 from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
 import lsst.pipe.base as pipeBase
@@ -47,8 +61,10 @@ import numpy as np
 import pydantic
 
 from .errors import IsParentError, NotPrimaryError
+from .input_config import InputConfig
 from .utils import get_spanned_image
 
+_LOG = logging.getLogger(__name__)
 TWO_SQRT_PI = 2 * math.sqrt(np.pi)
 
 
@@ -183,9 +199,401 @@ class SourceTablePsfComponentsAction(PsfComponentsActionBase):
         return gaussians
 
 
+class MagnitudeDependentSizePriorConfig(pexConfig.Config):
+    """Configuration for a magnitude-dependent size prior.
+
+    Defaults are for ugrizy total mag and log10(r_eff/arcsec).
+    """
+
+    intercept_mag = pexConfig.Field[float](
+        doc="The magnitude at which no adjustment is applied",
+        default=18.0,
+    )
+    slope_median_per_mag = pexConfig.Field[float](
+        doc="The slope in the median size, in dex per mag",
+        default=-0.15,
+    )
+    slope_stddev_per_mag = pexConfig.Field[float](
+        doc="The slope in the standard deviation of the size, in dex per mag",
+        default=0.,
+    )
+
+
+class ModelInitializer(ABC, pydantic.BaseModel):
+    model_config: ClassVar[pydantic.ConfigDict] = frozen_arbitrary_allowed_config
+
+    inputs: dict[str, Any] = pydantic.Field(
+        title="Additional external inputs used in initialization",
+        default_factory=dict,
+    )
+    priors_shape_mag: dict = pydantic.Field(
+        title="Magnitude-dependent shape prior configurations",
+        default_factory=dict,
+    )
+
+    @abstractmethod
+    def initialize_model(
+        self,
+        model: Model,
+        source: Mapping[str, Any],
+        catexps: list[CatalogExposureSourcesABC],
+        config_data: CatalogSourceFitterConfigData,
+        values_init: Mapping[g2f.ParameterD, float] | None = None,
+        **kwargs,
+    ):
+        raise NotImplementedError(f"{self.__name__} must implement initialize_model")
+
+
+class MakeInitializerActionBase(ConfigurableAction):
+    def __call__(
+        self,
+        catalog_multi: Sequence,
+        catexps: list[fitMB.CatalogExposureInputs],
+        config_data: CatalogSourceFitterConfigData,
+        **kwargs
+    ) -> ModelInitializer:
+        """Make a ModelInitializer
+
+        Parameters
+        ----------
+        catalog_multi
+            The multiband catalog with one row per object to fit.
+        catexps
+            Per-band catalog-exposure pairs.
+        config_data
+            Fitter configuration and data.
+        kwargs
+            Additional arguments to pass to add to ModelInitializer.inputs.
+
+        Returns
+        -------
+        initializer
+            The configured ModelInitializer.
+        """
+        raise NotImplementedError(f"{self.__name__} must implement __call__")
+
+
+class BasicModelInitializer(ModelInitializer):
+    """A generic model initializer that should work on most kinds of models."""
+
+    def _get_params_init(self, model_sources: tuple[g2f.Source]) -> tuple[g2f.ParameterD]:
+        # TODO: There ought to be a better way to not get the PSF centroids
+        # (those are part of model.data's fixed parameters)
+        params_init = (
+            tuple(
+                (
+                    param
+                    for param in get_params_uniq(model_sources[0])
+                    if param.free
+                    or (
+                        isinstance(param, g2f.CentroidXParameterD)
+                        or isinstance(param, g2f.CentroidYParameterD)
+                    )
+                )
+            )
+            if (len(model_sources) == 1)
+            else tuple(
+                {
+                    param: None
+                    for source in model_sources
+                    for param in get_params_uniq(source)
+                    if param.free
+                    or (
+                        isinstance(param, g2f.CentroidXParameterD)
+                        or isinstance(param, g2f.CentroidYParameterD)
+                    )
+                }.keys()
+            )
+        )
+        return params_init
+
+    def _get_priors_type(
+        self, priors: tuple[g2f.Prior],
+    ) -> tuple[tuple[g2f.GaussianPrior], tuple[g2f.ShapePrior]]:
+        priors_gauss: list[g2f.GaussianPrior] = []
+        priors_shape: list[g2f.ShapePrior] = []
+        for prior in priors:
+            if isinstance(prior, g2f.GaussianPrior):
+                priors_gauss.append(prior)
+            elif isinstance(prior, g2f.ShapePrior):
+                priors_shape.append(prior)
+        return tuple(priors_gauss), tuple(priors_shape)
+
+    def get_centroid_and_shape(
+        self, source: Mapping[str, Any],
+        catexps: list[CatalogExposureSourcesABC],
+        config_data: CatalogSourceFitterConfigData,
+        values_init: Mapping[g2f.ParameterD, float] | None = None,
+    ) -> tuple[tuple[float, float], tuple[float, float, float]]:
+        centroid = source["slot_Centroid_x"], source["slot_Centroid_y"]
+        sig_x = math.sqrt(source["slot_Shape_xx"])
+        sig_y = math.sqrt(source["slot_Shape_yy"])
+        # TODO: Verify if there's a sign difference here
+        rho = np.clip(source["slot_Shape_xy"] / (sig_x * sig_y), -0.5, 0.5)
+        shape = sig_x, sig_y, rho
+        return centroid, shape
+
+    def get_params_init(self, model: Model) -> tuple[g2f.ParameterD]:
+        return self._get_params_init(model_sources=model.sources)
+
+    def get_priors_type(self, model: Model) -> tuple[tuple[g2f.GaussianPrior], tuple[g2f.ShapePrior]]:
+        return self._get_priors_type(model.priors)
+
+    def initialize_model(
+        self,
+        model: Model,
+        source: Mapping[str, Any],
+        catexps: list[CatalogExposureSourcesABC],
+        config_data: CatalogSourceFitterConfigData,
+        values_init: Mapping[g2f.ParameterD, float] | None = None,
+        **kwargs,
+    ):
+        if values_init is None:
+            values_init = {}
+        set_flux_limits = kwargs.pop("set_flux_limits") if "set_flux_limits" in kwargs else True
+        if kwargs:
+            raise ValueError(f"Unexpected {kwargs=}")
+        centroid_pixel_offset = config_data.config.centroid_pixel_offset
+        (cen_x, cen_y), (sig_x, sig_y, rho) = self.get_centroid_and_shape(
+            source, catexps, config_data, values_init=values_init,
+        )
+        # If we couldn't get a shape at all, make it small and roundish
+        if not np.isfinite(rho):
+            # Note rho=0 (circular) is generally disfavoured by shape priors
+            # However, setting it to a non-zero value seems to make scipy
+            # fail to move off initial conditions, as do sizes below 2 pixels
+            sig_x, sig_y, rho = 2.0, 2.0, 0.0
+
+        # Make restrictive centroid limits (intersection, not union)
+        x_min, y_min, x_max, y_max = -np.Inf, -np.Inf, np.Inf, np.Inf
+
+        fluxes_init = []
+        fluxes_limits = []
+
+        n_observations = len(model.data)
+        n_components = len(model.sources[0].components)
+
+        for idx_obs, observation in enumerate(model.data):
+            coordsys = observation.image.coordsys
+            catexp = catexps[idx_obs]
+            band = catexp.band
+
+            x_min = max(x_min, coordsys.x_min)
+            y_min = max(y_min, coordsys.y_min)
+            x_max = min(x_max, coordsys.x_min + float(observation.image.n_cols))
+            y_max = min(y_max, coordsys.y_min + float(observation.image.n_rows))
+
+            flux_total = np.nansum(observation.image.data[observation.mask_inv.data])
+
+            column_ref = f"merge_measurement_{band}"
+            if column_ref in source.schema.getNames() and source[column_ref]:
+                row = source
+            else:
+                row = catexp.catalog.find(source["id"])
+
+            if not row["base_SdssShape_flag"]:
+                flux_init = row["base_SdssShape_instFlux"]
+            else:
+                flux_init = row["slot_GaussianFlux_instFlux"]
+                if not (flux_init > 0):
+                    flux_init = row["slot_PsfFlux_instFlux"]
+
+            calib = catexp.exposure.photoCalib
+            flux_init = calib.instFluxToNanojansky(flux_init) if (flux_init > 0) else max(flux_total, 1.0)
+            if set_flux_limits:
+                flux_max = 10 * max((flux_init, flux_total))
+                flux_min = min(1e-12, flux_max / 1000)
+            else:
+                flux_min, flux_max = 0, np.Inf
+            fluxes_init.append(flux_init / n_components)
+            fluxes_limits.append((flux_min, flux_max))
+
+        if not np.isfinite(cen_x):
+            cen_x = observation.image.n_cols / 2.0
+        else:
+            cen_x -= centroid_pixel_offset
+        if not np.isfinite(cen_y):
+            # TODO: Add bbox coords or remove
+            cen_y = observation.image.n_rows / 2.0
+        else:
+            cen_y -= centroid_pixel_offset
+
+        # An R_eff larger than the box size is problematic. This should also
+        # stop unreasonable size proposals; a log10 transform isn't enough.
+        # TODO: Try logit for r_eff?
+        size_major = g2.EllipseMajor(g2.Ellipse(sigma_x=sig_x, sigma_y=sig_y, rho=rho)).r_major
+        limits_size = max(5.0 * size_major, 2.0 * np.hypot(x_max - x_min, y_max - y_min))
+        limits_xy = (1e-5, limits_size)
+        params_limits_init = {
+            g2f.CentroidXParameterD: (cen_x, (x_min, x_max)),
+            g2f.CentroidYParameterD: (cen_y, (y_min, y_max)),
+            g2f.ReffXParameterD: (sig_x, limits_xy),
+            g2f.ReffYParameterD: (sig_y, limits_xy),
+            g2f.SigmaXParameterD: (sig_x, limits_xy),
+            g2f.SigmaYParameterD: (sig_y, limits_xy),
+            g2f.RhoParameterD: (rho, None),
+            # TODO: get guess from configs?
+            g2f.SersicMixComponentIndexParameterD: (1.0, None),
+        }
+
+        idx_obs = 0
+        for param in self.params_init:
+            if param.linear:
+                value_init = fluxes_init[idx_obs]
+                limits_new = fluxes_limits[idx_obs]
+                idx_obs += 1
+                if idx_obs == n_observations:
+                    idx_obs = 0
+            else:
+                type_param = type(param)
+                value_init, limits_new = params_limits_init.get(type_param, (values_init.get(param), None))
+            if limits_new:
+                param.limits = g2f.LimitsD(limits_new[0], limits_new[1])
+            if value_init is not None:
+                param.value = value_init
+
+        priors_shape_mag = self.priors_shape_mag
+        has_priors_mag = len(priors_shape_mag) > 0
+        if has_priors_mag:
+            mag_total = u.nJy.to(u.ABmag, np.nansum(fluxes_init))
+
+        # TODO: Add centroid prior
+        priors_gauss, priors_shape = self.get_priors_type(model)
+        for prior in priors_shape:
+            if has_priors_mag and ((prior_adjustments := priors_shape_mag.get(prior)) is not None):
+                mag_dep_prior, prior_shape_new = prior_adjustments
+                prior_size_new = prior_shape_new.prior_size
+                prior.prior_size.mean_parameter.value = prior_size_new.mean_parameter.value * 10**(
+                    # the size-apparent mag relation probably flattens
+                    # for very bright/faint objects - maybe not so
+                    # sharply, but this should work fine.
+                    mag_dep_prior.slope_median_per_mag*np.clip(
+                        mag_total - mag_dep_prior.intercept_mag, -12.5, 12.5,
+                    )
+                )
+                prior.prior_size.stddev_parameter.value = prior_size_new.stddev_parameter.value * 10**(
+                    # it's uncertain how the intrinsic scatter behaves
+                    # educated guess is it doesn't change much, also
+                    # one runs out of bright galaxies to measure it anyway
+                    mag_dep_prior.slope_stddev_per_mag*np.clip(
+                        mag_total - mag_dep_prior.intercept_mag, -12.5, 12.5,
+                    )
+                )
+            else:
+                prior.prior_size.mean_parameter.value = size_major
+
+
+class CachedBasicModelInitializer(BasicModelInitializer):
+    """A basic initializer with a cached list of model sources and priors."""
+
+    priors: tuple[g2f.Prior, ...] = pydantic.Field(title="The gauss2d_fit model sources")
+    sources: tuple[g2f.Source, ...] = pydantic.Field(title="The gauss2d_fit model sources")
+
+    @cached_property
+    def params_init(self) -> tuple[g2f.ParameterD]:
+        return self._get_params_init(model_sources=self.sources)
+
+    @cached_property
+    def priors_type(self) -> tuple[tuple[g2f.GaussianPrior], tuple[g2f.ShapePrior]]:
+        return self._get_priors_type(self.priors)
+
+    def get_params_init(self, model: Model) -> tuple[g2f.ParameterD]:
+        assert tuple(model.sources) == self.sources
+        return self.params_init
+
+    def get_priors_type(self, model: Model) -> tuple[tuple[g2f.GaussianPrior], tuple[g2f.ShapePrior]]:
+        assert tuple(model.priors) == self.priors
+        return self.priors_type
+
+
+class InitialInputData(pydantic.BaseModel):
+    model_config: ClassVar[pydantic.ConfigDict] = frozen_arbitrary_allowed_config
+
+    column_id: str | None = pydantic.Field(
+        title="Override for id column specified in config_input",
+        default=None,
+    )
+    config_input: InputConfig = pydantic.Field(title="Configuration for the data table")
+    data: Table = pydantic.Field(title="The data table")
+    name_model: str = pydantic.Field(title="The name of the model in columns")
+    prefix_column: str = pydantic.Field(title="The prefix for all fitted column names")
+    size_column: str = pydantic.Field(title="The name of the size column", default="reff")
+
+    def get_column_id(self):
+        return self.column_id or self.config_input.column_id
+
+    def get_column(self, name_column: str, data=None):
+        if data is None:
+            data = self.data
+        return data[f"{self.prefix_column}{name_column}"]
+
+    def model_post_init(self, __context: Any) -> None:
+        id_index = {idnum: idx for idx, idnum in enumerate(self.data[self.get_column_id()])}
+        object.__setattr__(self, "id_index", id_index)
+
+
+class MakeBasicInitializerAction(MakeInitializerActionBase):
+    def _make_initializer(
+        self,
+        catalog_multi: Sequence,
+        catexps: list[fitMB.CatalogExposureInputs],
+        config_data: CatalogSourceFitterConfigData,
+    ) -> ModelInitializer:
+        return BasicModelInitializer()
+
+    def __call__(
+        self,
+        catalog_multi: Sequence,
+        catexps: list[fitMB.CatalogExposureInputs],
+        config_data: CatalogSourceFitterConfigData,
+        **kwargs
+    ) -> ModelInitializer:
+        initializer = self._make_initializer(
+            catalog_multi=catalog_multi, catexps=catexps, config_data=config_data,
+        )
+        for name, (config_input, data) in kwargs.items():
+            if not isinstance(data, Table) and hasattr(data, "meta"):
+                _LOG.warning(
+                    f"Ignoring extra input {name=} because it is of type {type(data)} and is either not an"
+                    f" astropy.table.Table or missing a 'meta' attr"
+                )
+            config_data = data.meta["config"]
+            prefix_column = config_data["prefix_column"]
+            config_source = next(iter(config_data["config_model"]["sources"].values()))
+            config_group = next(iter(config_source["component_groups"].values()))
+            is_sersic = len(config_group["components_sersic"]) > 0
+            name_model = next(iter(
+                config_group["components_sersic"] if is_sersic else config_group["components_gaussian"]
+            ))
+            initializer.inputs[name] = InitialInputData(
+                column_id=config_data.get("column_id"),
+                config_input=config_input,
+                data=data,
+                name_model=name_model,
+                prefix_column=prefix_column,
+                size_column="reff" if is_sersic else "sig",
+            )
+        return initializer
+
+
+class MakeCachedBasicInitializerAction(MakeBasicInitializerAction):
+    def _make_initializer(
+        self,
+        catalog_multi: Sequence,
+        catexps: list[fitMB.CatalogExposureInputs],
+        config_data: CatalogSourceFitterConfigData,
+    ) -> ModelInitializer:
+        sources, priors = config_data.sources_priors
+        return CachedBasicModelInitializer(priors=priors, sources=sources)
+
+
 class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFitSubConfig):
     """Configuration for the MultiProFit profile fitter."""
 
+    action_initializer = ConfigurableActionField[MakeInitializerActionBase](
+        doc="The action to return an initializer",
+        default=MakeCachedBasicInitializerAction,
+    )
     action_psf = ConfigurableActionField[PsfComponentsActionBase](
         doc="The action to return PSF component values from catalogs, if implemented",
         default=None,
@@ -211,6 +619,11 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         check=lambda x: np.isfinite(x) and (x >= 0),
     )
     prefix_column = pexConfig.Field[str](default="mpf_", doc="Column name prefix")
+    size_priors = pexConfig.ConfigDictField[str, MagnitudeDependentSizePriorConfig](
+        doc="Per-component magnitude-dependent size prior configurations."
+            " Will be added to component with existing configs.",
+        default={},
+    )
 
     def bands_read_only(self) -> set[str]:
         # TODO: Re-implement determination of prior-only bands once
@@ -421,6 +834,10 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
         Keyword arguments to pass to the superclass constructor.
     """
 
+    initializer: ModelInitializer = pydantic.Field(
+        title="The model parameter initializer",
+        default_factory=lambda: BasicModelInitializer(),
+    )
     wcs: lsst.afw.geom.SkyWcs = pydantic.Field(
         title="The WCS object to use to convert pixel coordinates to RA/dec",
     )
@@ -465,145 +882,14 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
         model: g2f.ModelD,
         source: Mapping[str, Any],
         catexps: list[CatalogExposureSourcesABC],
+        config_data: CatalogSourceFitterConfigData,
         values_init: Mapping[g2f.ParameterD, float] | None = None,
-        centroid_pixel_offset: float = 0,
         **kwargs,
     ):
-        if values_init is None:
-            values_init = {}
-        set_flux_limits = kwargs.pop("set_flux_limits") if "set_flux_limits" in kwargs else True
-        if kwargs:
-            raise ValueError(f"Unexpected {kwargs=}")
-        sig_x = math.sqrt(source["slot_Shape_xx"])
-        sig_y = math.sqrt(source["slot_Shape_yy"])
-        # TODO: Verify if there's a sign difference here
-        rho = np.clip(source["slot_Shape_xy"] / (sig_x * sig_y), -0.5, 0.5)
-        if not np.isfinite(rho):
-            sig_x, sig_y, rho = 0.5, 0.5, 0
-
-        # Make restrictive centroid limits (intersection, not union)
-        x_min, y_min, x_max, y_max = -np.Inf, -np.Inf, np.Inf, np.Inf
-
-        fluxes_init = []
-        fluxes_limits = []
-
-        n_observations = len(model.data)
-        n_components = len(model.sources[0].components)
-
-        for idx_obs, observation in enumerate(model.data):
-            coordsys = observation.image.coordsys
-            catexp = catexps[idx_obs]
-            band = catexp.band
-
-            x_min = max(x_min, coordsys.x_min)
-            y_min = max(y_min, coordsys.y_min)
-            x_max = min(x_max, coordsys.x_min + float(observation.image.n_cols))
-            y_max = min(y_max, coordsys.y_min + float(observation.image.n_rows))
-
-            flux_total = np.nansum(observation.image.data[observation.mask_inv.data])
-
-            column_ref = f"merge_measurement_{band}"
-            if column_ref in source.schema.getNames() and source[column_ref]:
-                row = source
-            else:
-                row = catexp.catalog.find(source["id"])
-
-            if not row["base_SdssShape_flag"]:
-                flux_init = row["base_SdssShape_instFlux"]
-            else:
-                flux_init = row["slot_GaussianFlux_instFlux"]
-                if not (flux_init > 0):
-                    flux_init = row["slot_PsfFlux_instFlux"]
-
-            calib = catexp.exposure.photoCalib
-            flux_init = calib.instFluxToNanojansky(flux_init) if (flux_init > 0) else max(flux_total, 1.0)
-            if set_flux_limits:
-                flux_max = 10 * max((flux_init, flux_total))
-                flux_min = min(1e-12, flux_max / 1000)
-            else:
-                flux_min, flux_max = 0, np.Inf
-            fluxes_init.append(flux_init / n_components)
-            fluxes_limits.append((flux_min, flux_max))
-
-        try:
-            cen_x, cen_y = (
-                source["slot_Centroid_x"] - centroid_pixel_offset,
-                source["slot_Centroid_y"] - centroid_pixel_offset,
-            )
-        # TODO: determine which exceptions can occur above
-        except Exception:
-            # TODO: Add bbox coords or remove
-            cen_x = observation.image.n_cols / 2.0
-            cen_y = observation.image.n_rows / 2.0
-
-        # An R_eff larger than the box size is problematic. This should also
-        # stop unreasonable size proposals; a log10 transform isn't enough.
-        # TODO: Try logit for r_eff?
-        size_major = g2.EllipseMajor(g2.Ellipse(sigma_x=sig_x, sigma_y=sig_y, rho=rho)).r_major
-        limits_size = max(5.0 * size_major, 2.0 * np.hypot(x_max - x_min, y_max - y_min))
-        limits_xy = (1e-5, limits_size)
-        params_limits_init = {
-            g2f.CentroidXParameterD: (cen_x, (x_min, x_max)),
-            g2f.CentroidYParameterD: (cen_y, (y_min, y_max)),
-            g2f.ReffXParameterD: (sig_x, limits_xy),
-            g2f.ReffYParameterD: (sig_y, limits_xy),
-            g2f.SigmaXParameterD: (sig_x, limits_xy),
-            g2f.SigmaYParameterD: (sig_y, limits_xy),
-            g2f.RhoParameterD: (rho, None),
-            # TODO: get guess from configs?
-            g2f.SersicMixComponentIndexParameterD: (1.0, None),
-        }
-
-        # TODO: There ought to be a better way to not get the PSF centroids
-        # (those are part of model.data's fixed parameters)
-        params_init = (
-            tuple(
-                (
-                    param
-                    for param in get_params_uniq(model.sources[0])
-                    if param.free
-                    or (
-                        isinstance(param, g2f.CentroidXParameterD)
-                        or isinstance(param, g2f.CentroidYParameterD)
-                    )
-                )
-            )
-            if (len(model.sources) == 1)
-            else tuple(
-                {
-                    param: None
-                    for source in model.sources
-                    for param in get_params_uniq(source)
-                    if param.free
-                    or (
-                        isinstance(param, g2f.CentroidXParameterD)
-                        or isinstance(param, g2f.CentroidYParameterD)
-                    )
-                }.keys()
-            )
+        self.initializer.initialize_model(
+            model=model, source=source, catexps=catexps, config_data=config_data, values_init=values_init,
+            **kwargs
         )
-
-        idx_obs = 0
-        for param in params_init:
-            if param.linear:
-                value_init = fluxes_init[idx_obs]
-                limits_new = fluxes_limits[idx_obs]
-                idx_obs += 1
-                if idx_obs == n_observations:
-                    idx_obs = 0
-            else:
-                value_init, limits_new = params_limits_init.get(type(param), (values_init.get(param), None))
-            if limits_new:
-                param.limits = g2f.LimitsD(limits_new[0], limits_new[1])
-            if value_init is not None:
-                param.value = value_init
-
-        for prior in model.priors:
-            if isinstance(prior, g2f.GaussianPrior):
-                # TODO: Add centroid prior
-                pass
-            elif isinstance(prior, g2f.ShapePrior):
-                prior.prior_size.mean_parameter.value = size_major
 
     def make_CatalogExposurePsfs(
         self,
@@ -631,6 +917,52 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
         for idx, catexp in enumerate(catexps):
             if not isinstance(catexp, CatalogExposurePsfs):
                 errors.append(f"catexps[{idx=} {type(catexp)=} !isinstance(CatalogExposurePsfs)")
+        # Pre-validate the model
+        config_sources = config_data.config.config_model.sources
+        model_sources, priors = config_data.sources_priors
+        priors_shape = [prior for prior in priors if isinstance(prior, g2f.ShapePrior)]
+
+        if len(config_sources.keys()) > 1:
+            errors.append(f"model config has multiple sources: {list(config_sources.keys())}")
+        elif len(priors_shape) > 0:
+            idx_prior_found = 0
+            name_source, config_source = next(iter(config_sources.items()))
+            source = model_sources[0]
+            config_groups = config_source.component_groups
+            if len(config_groups.keys()) > 1:
+                errors.append(f"model {name_source=} has multiple groups: {list(config_source.keys())}")
+            else:
+                name_group, config_group = next(iter(config_groups.items()))
+                for idx_comp, (name_comp, config_comp) in enumerate(
+                    config_group.get_component_configs().items()
+                ):
+                    ellipse = source.components[idx_comp].ellipse
+                    # component.ellipse returns a const ref and must be copied
+                    # The ellipse classes might need copy constructors
+                    ellipse_copy = type(ellipse)(
+                        size_x=ellipse.size_x, size_y=ellipse.size_y, rho=ellipse.rho,
+                    )
+                    prior_shape_new = config_comp.make_shape_prior(ellipse_copy)
+                    if prior_shape_new is not None:
+                        if idx_prior_found == len(priors_shape):
+                            errors.append(
+                                f"Could not validate prior for {name_source=} {name_group=} {name_comp=}"
+                            )
+                            break
+                        prior_shape_old = priors_shape[idx_prior_found]
+                        ll_new, ll_old = (
+                            prior.evaluate().loglike for prior in (prior_shape_new, prior_shape_old)
+                        )
+                        # The necessary tolerance for this check is uncertain
+                        if not np.isclose(ll_new, ll_old):
+                            logger.warning(
+                                f"shape prior for {name_comp=} got inconsistent {ll_new=} vs {ll_old}"
+                            )
+                        if (prior_shape_mod := config_data.config.size_priors.get(name_comp)) is not None:
+                            self.initializer.priors_shape_mag[prior_shape_old] = (
+                                prior_shape_mod, prior_shape_new,
+                            )
+
         if errors:
             raise RuntimeError("\n".join(errors))
 
@@ -646,6 +978,20 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
 
     ConfigClass: ClassVar = MultiProFitSourceConfig
     _DefaultName: ClassVar = "multiProFitSource"
+
+    def make_default_fitter(
+        self,
+        catalog_multi: Sequence,
+        catexps: list[fitMB.CatalogExposureInputs],
+        config_data: CatalogSourceFitterConfigData,
+        **kwargs
+    ):
+        initializer = self.config.action_initializer(
+            catalog_multi=catalog_multi, catexps=catexps, config_data=config_data,
+            **kwargs
+        )
+        fitter = MultiProFitSourceFitter(wcs=catexps[0].exposure.wcs, initializer=initializer)
+        return fitter
 
     @utilsTimer.timeMethod
     def run(
@@ -677,16 +1023,23 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
         n_catexps = len(catexps)
         if n_catexps == 0:
             raise ValueError("Must provide at least one catexp")
-        if fitter is None:
-            fitter = MultiProFitSourceFitter(wcs=catexps[0].exposure.wcs)
         catexps_conv: list[CatalogExposurePsfs] = [None] * n_catexps
-        channels: list[g2f.Channel] = [None] * n_catexps
+        channels = [g2f.Channel.get(catexp.band) for catexp in catexps]
+        config_data = CatalogSourceFitterConfigData(channels=channels, config=self.config)
+        if fitter is None:
+            inputs_init = kwargs.get("inputs_init")
+            if inputs_init:
+                del kwargs["inputs_init"]
+            else:
+                inputs_init = {}
+            fitter = self.make_default_fitter(
+                catalog_multi=catalog_multi, catexps=catexps, config_data=config_data,
+                **inputs_init
+            )
         for idx, catexp in enumerate(catexps):
             if not isinstance(catexp, CatalogExposurePsfs):
                 catexp = fitter.make_CatalogExposurePsfs(catexp, config=self.config)
             catexps_conv[idx] = catexp
-            channels[idx] = catexp.channel
-        config_data = CatalogSourceFitterConfigData(channels=channels, config=self.config)
         catalog = fitter.fit(
             catalog_multi=catalog_multi, catexps=catexps_conv, config_data=config_data, **kwargs
         )
