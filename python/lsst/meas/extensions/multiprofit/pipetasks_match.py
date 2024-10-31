@@ -120,12 +120,14 @@ class MultiProFitDiffMatchedTractCatalogConfig(
 ):
     """Generic MultiProFit reference matched catalog writing task config."""
 
-    def finalize(
+    def _finalize_models(
         self,
         model_prefixes: str | list[str],
         bands: list[str] | None = None,
-        fluxes_include: list[str] | None = None,
-        sizes_include: list[str] | None = None,
+        fluxes_include: dict[str, list[str]] | None = None,
+        sizes_include: dict[str, list[str]] | None = None,
+        sersics_include: dict[str, list[str]] | None = None,
+        is_v2: bool = False,
     ):
         """Finalize matched catalog configuration for given models.
 
@@ -145,6 +147,12 @@ class MultiProFitDiffMatchedTractCatalogConfig(
         sizes_include
             Short column names of components whose sizes (reff) should be
             included in the matched catalog.
+        sersics_include
+            Short column names of components whose Sersic index should be
+            included in the matched catalog.
+        is_v2
+            Whether the matched catalog is a truth_summary_v2 with moment and
+            bulge fraction columns.
         """
         if isinstance(model_prefixes, str):
             model_prefixes = [model_prefixes]
@@ -153,9 +161,11 @@ class MultiProFitDiffMatchedTractCatalogConfig(
         if bands is None:
             bands = ["u", "g", "r", "i", "z", "y"]
         if fluxes_include is None:
-            fluxes_include = []
+            fluxes_include = {}
         if sizes_include is None:
-            sizes_include = []
+            sizes_include = {}
+        if sersics_include is None:
+            sersics_include = {}
         columns_target_add = []
         for model_prefix in model_prefixes:
             self.columns_target_copy += [
@@ -166,14 +176,26 @@ class MultiProFitDiffMatchedTractCatalogConfig(
             ]
             for band in bands:
                 columns_target_add.append(f"{model_prefix}_{band}_flux")
-                for component in fluxes_include:
+                for component in fluxes_include.get(model_prefix, []):
                     columns_target_add.append(f"{model_prefix}_{component}_{band}_flux")
-            for size_include in sizes_include:
+            for size_include in sizes_include.get(model_prefix, []):
                 for ax in ("x", "y"):
                     columns_target_add.append(f"{model_prefix}_{size_include}_reff_{ax}")
+                columns_target_add.append(f"{model_prefix}_{size_include}_rho")
+            for sersic_include in sersics_include.get(model_prefix, []):
+                columns_target_add.append(f"{model_prefix}_{sersic_include}_sersicindex")
         self.coord_format.column_target_coord1 = f"{model_prefixes[0]}_cen_ra"
         self.coord_format.column_target_coord2 = f"{model_prefixes[0]}_cen_dec"
-        self.columns_ref_copy += [f"flux_{band}" for band in bands]
+        self.columns_ref_copy.extend([f"flux_{band}" for band in bands])
+        if is_v2:
+            self.columns_ref_copy.extend([
+                'positionAngle',
+                'diskMajorAxisArcsec',
+                'diskAxisRatio',
+                'spheroidMajorAxisArcsec',
+                'spheroidAxisRatio',
+            ])
+            self.columns_ref_copy.extend([f"bulge_to_total_{band}" for band in bands])
         self.columns_target_copy.extend(columns_target_add)
         self.columns_target_copy.extend([f"{col}_err" for col in columns_target_add])
         self.columns_target_coord_err = [
@@ -181,6 +203,35 @@ class MultiProFitDiffMatchedTractCatalogConfig(
         ]
         self.columns_target_select_false = [f"{model_prefixes[0]}_not_primary_flag"]
         self.columns_target_select_true = []
+
+    def finalize(
+        self,
+        prefix_Sersic: str | None = None,
+        prefix_ExpDeV: str | None = None,
+        is_v2: bool = False,
+    ):
+        model_prefixes = []
+        fluxes_include = {}
+        sizes_include = {}
+        sersics_include = {}
+        if prefix_Sersic:
+            model_prefixes.append(prefix_Sersic)
+            # TODO: get component prefix
+            components = ["sersic"]
+            sizes_include[prefix_Sersic] = components
+            sersics_include[prefix_Sersic] = components
+        if prefix_ExpDeV:
+            model_prefixes.append(prefix_ExpDeV)
+            components = ["exp", "deV"]
+            fluxes_include[prefix_ExpDeV] = components
+            sizes_include[prefix_ExpDeV] = components
+        self._finalize_models(
+            model_prefixes=model_prefixes,
+            fluxes_include=fluxes_include,
+            sizes_include=sizes_include,
+            sersics_include=sersics_include,
+            is_v2=is_v2,
+        )
 
     def setDefaults(self):
         self.connections.name_input_cat_target = "objectTable_tract_multiprofit"
@@ -197,5 +248,5 @@ class MultiProFitDiffMatchedTractCatalogConfig(
 
 class MultiProFitDiffMatchedTractCatalogTask(DiffMatchedTractCatalogTask):
 
-    _DefaultName = "multiProfitDiffMatchedTractCatalogTask"
+    _DefaultName = "multiProFitDiffMatchedTractCatalogTask"
     ConfigClass = MultiProFitDiffMatchedTractCatalogConfig

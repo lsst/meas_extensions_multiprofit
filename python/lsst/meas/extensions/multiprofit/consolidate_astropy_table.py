@@ -72,14 +72,24 @@ class ConsolidateAstropyTableConfig(
 ):
     """PipelineTaskConfig for ConsolidateAstropyTableTask."""
 
+    drop_duplicate_columns = pexConfig.Field[bool](
+        doc="Whether to drop columns from a table if they occur in a previous table."
+            " If False, astropy will rename them with its default scheme.",
+        default=True,
+    )
     join_type = pexConfig.ChoiceField[str](
         doc="Type of join to perform in the final hstack",
         allowed={
             "inner": "Inner join",
             "outer": "Outer join",
+            "exact": "Exact join",
         },
-        default="inner",
+        default="exact",
         optional=False,
+    )
+    validate_duplicate_columns = pexConfig.Field[bool](
+        doc="Whether to check that duplicate columns are identical in any table they occur in.",
+        default=True,
     )
 
 
@@ -177,6 +187,9 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
 
         self.log.info("Concatenating %s per-patch astropy Tables", len(patches))
 
+        tables_read = []
+        check_columns = self.config.drop_duplicate_columns or self.config.validate_duplicate_columns
+
         for name, data_name in data.items():
             config_input = self.config.inputs[name]
             tables = [
@@ -187,7 +200,30 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                 )
                 for patch in (patches_ref if not config_input.is_multipatch else patches_null)
             ]
-            data[name] = tables[0] if (len(tables) == 1) else apTab.vstack(tables, join_type="exact")
+            table_new = tables[0] if (len(tables) == 1) else apTab.vstack(tables, join_type="exact")
+
+            if check_columns:
+                columns_new = set(x for x in table_new.colnames if x != config_input.join_column)
+                for name_previous in tables_read:
+                    table_old = data[name_previous]
+                    columns_common = columns_new.intersection(
+                        x for x in table_old.colnames if x != self.config.inputs[name_previous].join_column
+                    )
+                    for column_common in columns_common:
+                        if self.config.validate_duplicate_columns:
+                            if not np.array_equal(
+                                table_new[column_common], table_old[column_common], equal_nan=True,
+                            ):
+                                raise RuntimeError(
+                                    f"Joined table column={column_common} differs between {name} and"
+                                    f" {name_previous} tables"
+                                )
+                        if self.config.drop_duplicate_columns:
+                            del table_new[column_common]
+
+            data[name] = table_new
+            tables_read.append(name)
+
         # This will break if all tables have config.join_column
         # ... but that seems unlikely.
         table = apTab.hstack(
