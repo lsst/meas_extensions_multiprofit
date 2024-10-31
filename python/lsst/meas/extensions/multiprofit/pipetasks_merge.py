@@ -24,12 +24,12 @@ __all__ = [
     "MultiProFitConsolidateTablesTask",
 ]
 
+from .catalog_actions import MergeMultibandFluxes
 from .consolidate_astropy_table import (
     ConsolidateAstropyTableConfig,
     ConsolidateAstropyTableConnections,
     ConsolidateAstropyTableTask,
     InputConfig,
-    MergeMultibandFluxes,
 )
 from .pipetasks_fit import MultiProFitCoaddFitConfig, MultiProFitCoaddSersicFitConfig
 from .utils import get_all_subclasses
