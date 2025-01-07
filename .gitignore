@@ -32,3 +32,4 @@ python/lsst/meas/extensions/multiprofit/version.py
 ups/*.cfgc
 _build.*
 bin
+python/*.dist-info/
