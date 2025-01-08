@@ -25,8 +25,16 @@ __all__ = (
     "SourceTablePsfFitSuccessAction",
     "SourceTablePsfComponentsAction",
     "MagnitudeDependentSizePriorConfig",
-    "MultiProFitSourceFitter",
+    "ModelInitializer",
+    "MakeInitializerActionBase",
+    "BasicModelInitializer",
+    "CachedBasicModelInitializer",
+    "InitialInputData",
+    "MakeBasicInitializerAction",
+    "MakeCachedBasicInitializerAction",
     "MultiProFitSourceConfig",
+    "CatalogExposurePsfs",
+    "MultiProFitSourceFitter",
     "MultiProFitSourceTask",
 )
 
@@ -154,8 +162,24 @@ class SourceTablePsfComponentsAction(PsfComponentsActionBase):
         check=lambda x: x >= 2,
     )
 
-    def get_integral(self, moment_integral) -> float:
-        return moment_integral * TWO_SQRT_PI
+    @staticmethod
+    def get_integral(moment_zero) -> float:
+        """Get the total integrated flux from a zeroth moment value.
+
+        The zeroth moment is simply the integrated flux divided by a
+        constant value of 2*sqrt(pi).
+
+        Parameters
+        ----------
+        moment_zero
+            The zeroth moment value.
+
+        Returns
+        -------
+        integral
+            The total integrated weight (flux).
+        """
+        return moment_zero * TWO_SQRT_PI
 
     def get_schema(self) -> list[str]:
         names_moments = (
@@ -220,6 +244,10 @@ class MagnitudeDependentSizePriorConfig(pexConfig.Config):
 
 
 class ModelInitializer(ABC, pydantic.BaseModel):
+    """An interface for a configurable model initializer based on priors
+    and optional external data.
+    """
+
     model_config: ClassVar[pydantic.ConfigDict] = frozen_arbitrary_allowed_config
 
     inputs: dict[str, Any] = pydantic.Field(
@@ -241,10 +269,31 @@ class ModelInitializer(ABC, pydantic.BaseModel):
         values_init: Mapping[g2f.ParameterD, float] | None = None,
         **kwargs,
     ):
+        """Initialize a MultiProFit model for a single object corresponding
+        to a row in a catalog.
+
+        Parameters
+        ----------
+        model
+            The model to initialize parameter values for.
+        source
+            A mapping with fields expected to be populated in the
+            corresponding source catalog for initialization.
+        catexps
+            Per-band catalog-exposure pairs.
+        config_data
+            Fitter configuration and data.
+        values_init
+            Default initial values for parameters.
+        kwargs
+            Additional keyword arguments for any purpose.
+        """
         raise NotImplementedError(f"{self.__name__} must implement initialize_model")
 
 
 class MakeInitializerActionBase(ConfigurableAction):
+    """An interface for an action that creates an initializer."""
+
     def __call__(
         self,
         catalog_multi: Sequence,
@@ -252,7 +301,8 @@ class MakeInitializerActionBase(ConfigurableAction):
         config_data: CatalogSourceFitterConfigData,
         **kwargs
     ) -> ModelInitializer:
-        """Make a ModelInitializer
+        """Make a ModelInitializer object that can initialize model
+           parameter values for a given object in a catalog.
 
         Parameters
         ----------
@@ -274,9 +324,28 @@ class MakeInitializerActionBase(ConfigurableAction):
 
 
 class BasicModelInitializer(ModelInitializer):
-    """A generic model initializer that should work on most kinds of models."""
+    """A generic model initializer that should work on most kinds of models
+    with a single source.
+    """
 
     def _get_params_init(self, model_sources: tuple[g2f.Source]) -> tuple[g2f.ParameterD]:
+        """Return an ordered set of free parameters from a model's sources.
+
+        Parameters
+        ----------
+        model_sources
+            The sources in the model.
+
+        Returns
+        -------
+        params_init
+            The parameter objects for sources in the model.
+
+        Notes
+        -----
+        Only free and/or centroid parameters are returned (centroids are
+        always needed even if they are fixed).
+        """
         # TODO: There ought to be a better way to not get the PSF centroids
         # (those are part of model.data's fixed parameters)
         params_init = (
@@ -310,6 +379,20 @@ class BasicModelInitializer(ModelInitializer):
     def _get_priors_type(
         self, priors: tuple[g2f.Prior],
     ) -> tuple[tuple[g2f.GaussianPrior], tuple[g2f.ShapePrior]]:
+        """Return the list of priors of known type, by type.
+
+        Parameters
+        ----------
+        priors
+            A list of priors of any type, typically from a model.
+
+        Returns
+        -------
+        priors_gauss
+            A list of all of the Gaussian priors, in the order they occurred.
+        priors_shape
+            A list of all of the shape priors, in the order they occurred.
+        """
         priors_gauss: list[g2f.GaussianPrior] = []
         priors_shape: list[g2f.ShapePrior] = []
         for prior in priors:
@@ -320,11 +403,34 @@ class BasicModelInitializer(ModelInitializer):
         return tuple(priors_gauss), tuple(priors_shape)
 
     def get_centroid_and_shape(
-        self, source: Mapping[str, Any],
+        self,
+        source: Mapping[str, Any],
         catexps: list[CatalogExposureSourcesABC],
         config_data: CatalogSourceFitterConfigData,
         values_init: Mapping[g2f.ParameterD, float] | None = None,
     ) -> tuple[tuple[float, float], tuple[float, float, float]]:
+        """Get the centroid and shape for a source.
+
+        Parameters
+        ----------
+        source
+            A mapping with fields expected to be populated in the
+            corresponding source catalog for initialization.
+        catexps
+            A list of (source and psf) catalog-exposure pairs.
+        config_data
+            Configuration settings and data for fitting and output.
+        values_init
+            Initial parameter values from the model configuration.
+
+        Returns
+        -------
+        centroid
+            x- and y-axis centroid values.
+        sig_x, sig_y, rho
+            The x- and y-axis Gaussian sigma and rho values defining the
+            estimated elliptical shape of the source.
+        """
         centroid = source["slot_Centroid_x"], source["slot_Centroid_y"]
         sig_x = math.sqrt(source["slot_Shape_xx"])
         sig_y = math.sqrt(source["slot_Shape_yy"])
@@ -334,9 +440,35 @@ class BasicModelInitializer(ModelInitializer):
         return centroid, shape
 
     def get_params_init(self, model: Model) -> tuple[g2f.ParameterD]:
+        """Return the free and/or centroid parameters for a model.
+
+        Parameters
+        ----------
+        model
+            The model to return parameters for.
+
+        Returns
+        -------
+        parameters
+            The ordered list of parameters for the model.
+        """
         return self._get_params_init(model_sources=model.sources)
 
     def get_priors_type(self, model: Model) -> tuple[tuple[g2f.GaussianPrior], tuple[g2f.ShapePrior]]:
+        """Return the list of priors of known type, by type.
+
+        Parameters
+        ----------
+        model
+            The model to return priors for.
+
+        Returns
+        -------
+        priors_gauss
+            A list of all of the Gaussian priors, in the order they occurred.
+        priors_shape
+            A list of all of the shape priors, in the order they occurred.
+        """
         return self._get_priors_type(model.priors)
 
     def initialize_model(
@@ -463,18 +595,18 @@ class BasicModelInitializer(ModelInitializer):
             if has_priors_mag and ((prior_adjustments := priors_shape_mag.get(prior)) is not None):
                 mag_dep_prior, prior_shape_new = prior_adjustments
                 prior_size_new = prior_shape_new.prior_size
+                # the size-apparent mag relation probably flattens
+                # for very bright/faint objects - maybe not so
+                # sharply, but clipping a broad mag range ought to be fine
                 prior.prior_size.mean_parameter.value = prior_size_new.mean_parameter.value * 10**(
-                    # the size-apparent mag relation probably flattens
-                    # for very bright/faint objects - maybe not so
-                    # sharply, but this should work fine.
                     mag_dep_prior.slope_median_per_mag*np.clip(
                         mag_total - mag_dep_prior.intercept_mag, -12.5, 12.5,
                     )
                 )
+                # it's uncertain how the intrinsic scatter behaves
+                # educated guess is it doesn't change much, also
+                # one runs out of bright galaxies to measure it anyway
                 prior.prior_size.stddev_parameter.value = prior_size_new.stddev_parameter.value * 10**(
-                    # it's uncertain how the intrinsic scatter behaves
-                    # educated guess is it doesn't change much, also
-                    # one runs out of bright galaxies to measure it anyway
                     mag_dep_prior.slope_stddev_per_mag*np.clip(
                         mag_total - mag_dep_prior.intercept_mag, -12.5, 12.5,
                     )
@@ -491,10 +623,12 @@ class CachedBasicModelInitializer(BasicModelInitializer):
 
     @cached_property
     def params_init(self) -> tuple[g2f.ParameterD]:
+        """Return a cached reference to the result of _get_params_init."""
         return self._get_params_init(model_sources=self.sources)
 
     @cached_property
     def priors_type(self) -> tuple[tuple[g2f.GaussianPrior], tuple[g2f.ShapePrior]]:
+        """Return a cached reference to the result of _get_priors_type."""
         return self._get_priors_type(self.priors)
 
     def get_params_init(self, model: Model) -> tuple[g2f.ParameterD]:
@@ -507,6 +641,11 @@ class CachedBasicModelInitializer(BasicModelInitializer):
 
 
 class InitialInputData(pydantic.BaseModel):
+    """A configurable wrapper to retrieve formatted columns from a catalog.
+
+    This provides a common interface to typical MultiProFit table outputs.
+    """
+
     model_config: ClassVar[pydantic.ConfigDict] = frozen_arbitrary_allowed_config
 
     column_id: str | None = pydantic.Field(
@@ -520,19 +659,40 @@ class InitialInputData(pydantic.BaseModel):
     size_column: str = pydantic.Field(title="The name of the size column", default="reff")
 
     def get_column_id(self):
+        """Return the name of the object ID column."""
         return self.column_id or self.config_input.column_id
 
     def get_column(self, name_column: str, data=None):
+        """Get the values from a column.
+
+        Parameters
+        ----------
+        name_column
+            The name of the column to retrieve.
+        data
+            The catalog to retrieve the column from. Default is self.data.
+
+        Returns
+        -------
+        values
+            The column values.
+        """
         if data is None:
             data = self.data
         return data[f"{self.prefix_column}{name_column}"]
 
     def model_post_init(self, __context: Any) -> None:
+        # Initialize a mapping of the row number for a given object ID value
+        # This is implemented in afw catalogs but not most other tabular types
         id_index = {idnum: idx for idx, idnum in enumerate(self.data[self.get_column_id()])}
         object.__setattr__(self, "id_index", id_index)
 
 
 class MakeBasicInitializerAction(MakeInitializerActionBase):
+    """An action to construct an initializer for a single-component,
+    single-source model.
+    """
+
     def _make_initializer(
         self,
         catalog_multi: Sequence,
@@ -577,6 +737,13 @@ class MakeBasicInitializerAction(MakeInitializerActionBase):
 
 
 class MakeCachedBasicInitializerAction(MakeBasicInitializerAction):
+    """A MakeBasicInitializerAction that caches references to the source
+    and prior objects of the model.
+
+    This is solely a performance optimization and should be favored over
+    MakeBasicInitializerAction unless the caching is shown to be slower.
+    """
+
     def _make_initializer(
         self,
         catalog_multi: Sequence,
@@ -631,6 +798,7 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
         return set()
 
     def requires_psf(self):
+        """Return whether the PSF action is not None."""
         return type(self.action_psf) is PsfComponentsActionBase
 
     def setDefaults(self):
@@ -896,6 +1064,20 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
         catexp: fitMB.CatalogExposureInputs,
         config: MultiProFitSourceConfig,
     ) -> CatalogExposurePsfs:
+        """Make a CatalogExposurePsfs from a list of inputs and a fit config.
+
+        Parameters
+        ----------
+        catexp
+            The input catalog-exposure pairs.
+        config
+            The MultiProFit source fitting config.
+
+        Returns
+        -------
+        catexp_psf
+            The resulting CatalogExposurePsfs.
+        """
         catexp_psf = CatalogExposurePsfs(
             # dataclasses.asdict(catexp)_makes a recursive deep copy.
             # That must be avoided.
@@ -985,7 +1167,26 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
         catexps: list[fitMB.CatalogExposureInputs],
         config_data: CatalogSourceFitterConfigData,
         **kwargs
-    ):
+    ) -> MultiProFitSourceFitter:
+        """Make a default MultiProFitSourceFitter.
+
+        Parameters
+        ----------
+        catalog_multi
+            A multi-band, indexable source catalog.
+        catexps
+            Catalog-exposure-PSF model tuples to fit source models for.
+        config_data
+            Configuration and data for the initalizer.
+        kwargs
+            Additional keyword arguments to pass to
+            self.config.action_initializer.
+
+        Returns
+        -------
+        fitter
+            A MultiProFitSourceFitter using the first catexp's wcs.
+        """
         initializer = self.config.action_initializer(
             catalog_multi=catalog_multi, catexps=catexps, config_data=config_data,
             **kwargs
@@ -1005,13 +1206,13 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
 
         Parameters
         ----------
-        catalog_multi : `typing.Sequence`
+        catalog_multi
             A multi-band, indexable source catalog.
-        catexps : list[`CatalogExposureInputs`]
+        catexps
             Catalog-exposure-PSF model tuples to fit source models for.
         fitter
             The fitter instance to use. Default-initialized if not provided.
-        **kwargs
+        kwargs
             Additional keyword arguments to pass to self.fit.
 
         Returns

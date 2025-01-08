@@ -52,6 +52,7 @@ from lsst.multiprofit.componentconfig import (
 )
 from lsst.multiprofit.modelconfig import ModelConfig
 from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
+from lsst.multiprofit.fitting.fit_source import CatalogExposureSourcesABC, CatalogSourceFitterConfigData
 from lsst.pex.config import ConfigDictField, Field
 from lsst.pipe.tasks.fit_coadd_multiband import (
     CatalogExposureInputs,
@@ -63,8 +64,6 @@ from lsst.pipe.tasks.fit_coadd_psf import CoaddPsfFitConfig, CoaddPsfFitConnecti
 
 from .fit_coadd_multiband import (
     CachedBasicModelInitializer,
-    CatalogExposureSourcesABC,
-    CatalogSourceFitterConfigData,
     MagnitudeDependentSizePriorConfig,
     MakeBasicInitializerAction,
     ModelInitializer,
@@ -153,6 +152,13 @@ class MultiProFitCoaddObjectFitConfig(
         return next(iter(source.component_groups.values()))
 
     def add_point_source(self, name: str | None = None):
+        """Add a point source component.
+
+        Parameters
+        ----------
+        name
+            The name of the component.
+        """
         if name is None:
             name = component_names_default.point
         source = self._get_source()
@@ -168,6 +174,17 @@ class MultiProFitCoaddObjectFitConfig(
         fix_centroid: bool = False,
         use_shapelet_psf: bool = False,
     ):
+        """Apply runtime configuration changes to this config.
+
+        Parameters
+        ----------
+        add_point_source
+            Whether to add a point source component.
+        fix_centroid
+            Whether to fix the centroid.
+        use_shapelet_psf
+            Whether to initialize PSF parameters from prior shapelet fits.
+        """
         if add_point_source:
             self.add_point_source()
         if fix_centroid:
@@ -176,6 +193,7 @@ class MultiProFitCoaddObjectFitConfig(
             self.use_shapelet_psf()
 
     def fix_centroid(self):
+        """Fix (freeze) the source centroid parameters."""
         group = self._get_component_group()
         centroids = group.centroids["default"]
         centroids.x.fixed = True
@@ -199,7 +217,8 @@ class MultiProFitCoaddObjectFitConfig(
         raise NotImplementedError("Subclasses must implement make_default_model_config")
 
     @staticmethod
-    def make_point_source_component():
+    def make_point_source_component() -> GaussianComponentConfig:
+        """Make a point source component config (zero-size Gaussian)."""
         return GaussianComponentConfig(
             size_x=ParameterConfig(value_initial=0.0, fixed=True),
             size_y=ParameterConfig(value_initial=0.0, fixed=True),
@@ -207,7 +226,19 @@ class MultiProFitCoaddObjectFitConfig(
         )
 
     @staticmethod
-    def make_sersic_component(**kwargs):
+    def make_sersic_component(**kwargs) -> SersicComponentConfig:
+        """Make a default Sersic component config.
+
+        Parameters
+        ----------
+        kwargs
+            Keyword arguments to pass to the SersicIndexParameterConfig.
+
+        Returns
+        -------
+        config
+            The default-initialized config.
+        """
         return SersicComponentConfig(
             prior_axrat_stddev=0.8,
             prior_size_stddev=0.2,
@@ -215,7 +246,19 @@ class MultiProFitCoaddObjectFitConfig(
         )
 
     @staticmethod
-    def make_single_model_config(group: ComponentGroupConfig):
+    def make_single_model_config(group: ComponentGroupConfig) -> ModelConfig:
+        """Make a default single-source, single component group config.
+
+        Parameters
+        ----------
+        group
+            The component group config for the single source.
+
+        Returns
+        -------
+        config
+            A model config with a single nameless source and component group.
+        """
         return ModelConfig(
             sources={
                 "": SourceConfig(
@@ -237,6 +280,7 @@ class MultiProFitCoaddObjectFitConfig(
         self.connections.name_table = self.name_model
 
     def use_shapelet_psf(self):
+        """Reconfigure self to use prior shapelet PSF fit parameters."""
         self.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         self.drop_psf_connection = True
         self.connections.name_table += model_names_default.shapelet_psf

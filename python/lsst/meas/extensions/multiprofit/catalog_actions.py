@@ -35,6 +35,20 @@ class CatalogAction(ConfigurableAction):
     """Configurable action to return a catalog."""
 
     def __call__(self, data, **kwargs):
+        """Return a catalog, potentially modified in-place.
+
+        Parameters
+        ----------
+        data
+            A dict-like catalog.
+        kwargs
+            Additional keyword arguments.
+
+        Returns
+        -------
+        data
+            The original data, modified in-place.
+        """
         return data
 
 
