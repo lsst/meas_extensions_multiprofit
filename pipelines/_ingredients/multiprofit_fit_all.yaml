@@ -51,10 +51,9 @@ tasks:
           use_shapelet_psf=parameters.use_shapelet_psf,
         )
   fit_src_expdev_multiprofit:
-    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddExpDevFitTask
+    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddExpDeVFitTask
     config:
       python: |
-        from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddExpDevFitTask
         config.finalize(
           add_point_source=parameters.add_point_source,
           fix_centroid=parameters.fix_centroid,

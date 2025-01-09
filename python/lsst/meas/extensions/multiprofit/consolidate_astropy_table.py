@@ -19,110 +19,22 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = (
+    "ConsolidateAstropyTableConfigBase",
+    "ConsolidateAstropyTableConnections",
+    "ConsolidateAstropyTableConfig",
+    "ConsolidateAstropyTableTask",
+)
+
 from collections import defaultdict
 
 import astropy.table as apTab
 import lsst.pex.config as pexConfig
-from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as connectionTypes
 import numpy as np
 
-
-class CatalogAction(ConfigurableAction):
-    """Configurable action to return a catalog."""
-
-    def __call__(self, data, **kwargs):
-        return data
-
-
-class MergeMultibandFluxes(CatalogAction):
-    """Configurable action to merge single-band flux tables into one."""
-
-    name_model = pexConfig.Field[str](doc="The name of the model that fluxes are measured from", default="")
-
-    def __call__(self, data, **kwargs):
-        datasetType = kwargs.get("datasetType")
-        prefix_model = self.name_model + ("_" if self.name_model else "")
-        if (
-            self.name_model
-            and hasattr(data, "meta")
-            and datasetType
-            and (config := data.meta.get(datasetType))
-        ):
-            prefix = config.get("config", {}).get("prefix_column", "")
-        else:
-            prefix = ""
-        columns_rest = []
-        columns_flux_band = defaultdict(list)
-        for column in data.columns:
-            if not prefix or column.startswith(prefix):
-                if column.endswith("_flux"):
-                    band = column.split("_")[-2]
-                    columns_flux_band[band].append(column)
-            else:
-                columns_rest.append(column)
-
-        for band, columns_band in columns_flux_band.items():
-            column_flux = f'{columns_band[0].partition("_")[0]}_{band}_flux'
-            flux = np.nansum([data[column] for column in columns_band], axis=0)
-            data[column_flux] = flux
-
-            columns_band_err = [f"{column}_err" for column in columns_band]
-            errors = [data[column] ** 2 for column in columns_band_err if column in data.columns]
-            if errors:
-                flux_err = np.sqrt(np.nansum(errors, axis=0))
-                flux_err[flux_err == 0] = np.nan
-                column_flux_err = f"{column_flux}_err"
-                data[column_flux_err] = flux_err
-
-        if prefix_model:
-            colnames = [
-                col if (col in columns_rest) else f"{prefix}{prefix_model}{col.split(prefix, 1)[1]}"
-                for col in data.columns
-            ]
-            if hasattr(data, "rename_columns"):
-                data.rename_columns([x for x in data.columns], colnames)
-            else:
-                data.columns = colnames
-
-        return data
-
-
-class InputConfig(pexConfig.Config):
-    """Config for inputs to ConsolidateAstropyTableTask."""
-
-    doc = pexConfig.Field[str](doc="Doc for connection", optional=False)
-    action = ConfigurableActionField[CatalogAction](
-        doc="Action to modify the input table",
-        default=None,
-    )
-    columns = pexConfig.ListField[str](
-        doc="Column names to copy; default of None copies all", optional=True, default=None
-    )
-    column_id = pexConfig.Field[str](doc="ID column to merge", optional=False, default="objectId")
-    is_multiband = pexConfig.Field[bool](doc="Whether the dataset is multiband or not", default=False)
-    is_multipatch = pexConfig.Field[bool](doc="Whether the dataset is multipatch or not", default=False)
-    join_column = pexConfig.Field[str](
-        doc="Column to join on if unequal length instead of stacking", default=None, optional=True
-    )
-    storageClass = pexConfig.Field[str](doc="Storage class for DatasetType", default="ArrowAstropy")
-
-    def get_connection(self, name: str) -> connectionTypes.Input:
-        dimensions = ["skymap", "tract"]
-        if not self.is_multipatch:
-            dimensions.append("patch")
-        if not self.is_multiband:
-            dimensions.append("band")
-        connection = connectionTypes.Input(
-            doc=self.doc,
-            name=name,
-            storageClass=self.storageClass,
-            dimensions=dimensions,
-            multiple=not (self.is_multiband and self.is_multipatch),
-            deferLoad=self.columns is not None,
-        )
-        return connection
+from .input_config import InputConfig
 
 
 class ConsolidateAstropyTableConfigBase(pexConfig.Config):
@@ -167,14 +79,24 @@ class ConsolidateAstropyTableConfig(
 ):
     """PipelineTaskConfig for ConsolidateAstropyTableTask."""
 
+    drop_duplicate_columns = pexConfig.Field[bool](
+        doc="Whether to drop columns from a table if they occur in a previous table."
+            " If False, astropy will rename them with its default scheme.",
+        default=True,
+    )
     join_type = pexConfig.ChoiceField[str](
         doc="Type of join to perform in the final hstack",
         allowed={
             "inner": "Inner join",
             "outer": "Outer join",
+            "exact": "Exact join",
         },
-        default="inner",
+        default="exact",
         optional=False,
+    )
+    validate_duplicate_columns = pexConfig.Field[bool](
+        doc="Whether to check that duplicate columns are identical in any table they occur in.",
+        default=True,
     )
 
 
@@ -272,6 +194,9 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
 
         self.log.info("Concatenating %s per-patch astropy Tables", len(patches))
 
+        tables_read = []
+        check_columns = self.config.drop_duplicate_columns or self.config.validate_duplicate_columns
+
         for name, data_name in data.items():
             config_input = self.config.inputs[name]
             tables = [
@@ -282,7 +207,30 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                 )
                 for patch in (patches_ref if not config_input.is_multipatch else patches_null)
             ]
-            data[name] = tables[0] if (len(tables) == 1) else apTab.vstack(tables, join_type="exact")
+            table_new = tables[0] if (len(tables) == 1) else apTab.vstack(tables, join_type="exact")
+
+            if check_columns:
+                columns_new = set(x for x in table_new.colnames if x != config_input.join_column)
+                for name_previous in tables_read:
+                    table_old = data[name_previous]
+                    columns_common = columns_new.intersection(
+                        x for x in table_old.colnames if x != self.config.inputs[name_previous].join_column
+                    )
+                    for column_common in columns_common:
+                        if self.config.validate_duplicate_columns:
+                            if not np.array_equal(
+                                table_new[column_common], table_old[column_common], equal_nan=True,
+                            ):
+                                raise RuntimeError(
+                                    f"Joined table column={column_common} differs between {name} and"
+                                    f" {name_previous} tables"
+                                )
+                        if self.config.drop_duplicate_columns:
+                            del table_new[column_common]
+
+            data[name] = table_new
+            tables_read.append(name)
+
         # This will break if all tables have config.join_column
         # ... but that seems unlikely.
         table = apTab.hstack(

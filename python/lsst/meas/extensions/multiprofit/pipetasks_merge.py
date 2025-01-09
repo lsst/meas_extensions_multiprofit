@@ -24,14 +24,14 @@ __all__ = [
     "MultiProFitConsolidateTablesTask",
 ]
 
+from .catalog_actions import MergeMultibandFluxes
 from .consolidate_astropy_table import (
     ConsolidateAstropyTableConfig,
     ConsolidateAstropyTableConnections,
     ConsolidateAstropyTableTask,
     InputConfig,
-    MergeMultibandFluxes,
 )
-from .pipetasks_fit import MultiProFitCoaddFitConfig, MultiProFitCoaddSersicFitConfig
+from .pipetasks_fit import MultiProFitCoaddObjectFitConfig, MultiProFitCoaddSersicFitConfig
 from .utils import get_all_subclasses
 
 
@@ -46,7 +46,7 @@ class MultiProFitConsolidateTablesConfig(
 
     def _get_name_long(self, name_short: str):
         names_long_default = {
-            cls: cls.get_model_name_full() for cls in get_all_subclasses(MultiProFitCoaddFitConfig)
+            cls: cls.get_model_name_full() for cls in get_all_subclasses(MultiProFitCoaddObjectFitConfig)
         }
         return names_long_default.get(name_short, self.names_long.get(name_short, "Unspecified"))
 

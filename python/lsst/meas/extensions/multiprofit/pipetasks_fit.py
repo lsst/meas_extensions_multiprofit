@@ -24,7 +24,7 @@ __all__ = (
     "model_names_default",
     "MultiProFitCoaddPsfFitConfig",
     "MultiProFitCoaddPsfFitTask",
-    "MultiProFitCoaddFitConfig",
+    "MultiProFitCoaddObjectFitConfig",
     "MultiProFitCoaddPointFitConfig",
     "MultiProFitCoaddSersicFitConfig",
     "MultiProFitCoaddSersicFitTask",
@@ -39,8 +39,11 @@ __all__ = (
 )
 
 from abc import abstractmethod
+import math
 from types import SimpleNamespace
+from typing import Any, Mapping, Sequence
 
+import lsst.gauss2d.fit as g2f
 from lsst.multiprofit.componentconfig import (
     GaussianComponentConfig,
     ParameterConfig,
@@ -49,16 +52,26 @@ from lsst.multiprofit.componentconfig import (
 )
 from lsst.multiprofit.modelconfig import ModelConfig
 from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
-from lsst.pex.config import Field
+from lsst.multiprofit.fitting.fit_source import CatalogExposureSourcesABC, CatalogSourceFitterConfigData
+from lsst.pex.config import ConfigDictField, Field
 from lsst.pipe.tasks.fit_coadd_multiband import (
+    CatalogExposureInputs,
     CoaddMultibandFitConfig,
     CoaddMultibandFitConnections,
     CoaddMultibandFitTask,
 )
 from lsst.pipe.tasks.fit_coadd_psf import CoaddPsfFitConfig, CoaddPsfFitConnections, CoaddPsfFitTask
 
-from .fit_coadd_multiband import MultiProFitSourceTask, SourceTablePsfComponentsAction
+from .fit_coadd_multiband import (
+    CachedBasicModelInitializer,
+    MagnitudeDependentSizePriorConfig,
+    MakeBasicInitializerAction,
+    ModelInitializer,
+    MultiProFitSourceTask,
+    SourceTablePsfComponentsAction,
+)
 from .fit_coadd_psf import MultiProFitPsfTask
+from .input_config import InputConfig
 
 component_names_default = SimpleNamespace(
     point="point",
@@ -98,32 +111,62 @@ class MultiProFitCoaddPsfFitTask(CoaddPsfFitTask):
     _DefaultName = "multiProFitCoaddPsfFit"
 
 
-class MultiProFitCoaddFitConfig(
+class MultiProFitCoaddObjectFitConnections(CoaddMultibandFitConnections):
+    def __init__(self, *, config=None):
+        for name, config_input in config.inputs_init.items():
+            if hasattr(self, name):
+                raise ValueError(
+                    f"{config_input=} {name=} is invalid, due to being an existing attribute" f" of {self=}"
+                )
+            if config_input.is_multipatch or not config_input.is_multiband:
+                raise ValueError(
+                    f"Single-band and/or multipatch initialization config_input entries ({name})"
+                    f" are not supported yet."
+                )
+            connection = config_input.get_connection(name)
+            setattr(self, name, connection)
+
+
+class MultiProFitCoaddObjectFitConfig(
     CoaddMultibandFitConfig,
-    pipelineConnections=CoaddMultibandFitConnections,
+    pipelineConnections=MultiProFitCoaddObjectFitConnections,
 ):
     """Generic MultiProFit source fit task config."""
+
+    inputs_init = ConfigDictField(
+        doc="Mapping of optional input dataset configs by name, for initialization",
+        keytype=str,
+        itemtype=InputConfig,
+        default={},
+    )
 
     # This needs to be set, ideally in setDefaults of subclasses
     name_model = Field[str](doc="The name of the model", default=None)
 
     def _get_source(self):
-        return next(iter(self.fit_coadd_multiband.config_model.sources))
+        return next(iter(self.fit_coadd_multiband.config_model.sources.values()))
 
     def _get_component_group(self, source: SourceConfig | None = None):
         if source is None:
             source = self._get_source()
-        return source.next(iter(source.component_groups))
+        return next(iter(source.component_groups.values()))
 
     def add_point_source(self, name: str | None = None):
+        """Add a point source component.
+
+        Parameters
+        ----------
+        name
+            The name of the component.
+        """
         if name is None:
-            name = component_names_default.pointsource
+            name = component_names_default.point
         source = self._get_source()
         group = self._get_component_group(source=source)
         if name in group.components_gauss:
             raise RuntimeError(f"{name=} component already exists in {source=}")
         group.components_gauss[name] = self.make_point_source_component()
-        self.connections.name_table += name.pointsource
+        self.connections.name_table += model_names_default.point
 
     def finalize(
         self,
@@ -131,6 +174,17 @@ class MultiProFitCoaddFitConfig(
         fix_centroid: bool = False,
         use_shapelet_psf: bool = False,
     ):
+        """Apply runtime configuration changes to this config.
+
+        Parameters
+        ----------
+        add_point_source
+            Whether to add a point source component.
+        fix_centroid
+            Whether to fix the centroid.
+        use_shapelet_psf
+            Whether to initialize PSF parameters from prior shapelet fits.
+        """
         if add_point_source:
             self.add_point_source()
         if fix_centroid:
@@ -139,6 +193,7 @@ class MultiProFitCoaddFitConfig(
             self.use_shapelet_psf()
 
     def fix_centroid(self):
+        """Fix (freeze) the source centroid parameters."""
         group = self._get_component_group()
         centroids = group.centroids["default"]
         centroids.x.fixed = True
@@ -162,7 +217,8 @@ class MultiProFitCoaddFitConfig(
         raise NotImplementedError("Subclasses must implement make_default_model_config")
 
     @staticmethod
-    def make_point_source_component():
+    def make_point_source_component() -> GaussianComponentConfig:
+        """Make a point source component config (zero-size Gaussian)."""
         return GaussianComponentConfig(
             size_x=ParameterConfig(value_initial=0.0, fixed=True),
             size_y=ParameterConfig(value_initial=0.0, fixed=True),
@@ -170,15 +226,39 @@ class MultiProFitCoaddFitConfig(
         )
 
     @staticmethod
-    def make_sersic_component(**kwargs):
+    def make_sersic_component(**kwargs) -> SersicComponentConfig:
+        """Make a default Sersic component config.
+
+        Parameters
+        ----------
+        kwargs
+            Keyword arguments to pass to the SersicIndexParameterConfig.
+
+        Returns
+        -------
+        config
+            The default-initialized config.
+        """
         return SersicComponentConfig(
             prior_axrat_stddev=0.8,
-            prior_size_stddev=0.3,
+            prior_size_stddev=0.2,
             sersic_index=SersicIndexParameterConfig(**kwargs),
         )
 
     @staticmethod
-    def make_single_model_config(group: ComponentGroupConfig):
+    def make_single_model_config(group: ComponentGroupConfig) -> ModelConfig:
+        """Make a default single-source, single component group config.
+
+        Parameters
+        ----------
+        group
+            The component group config for the single source.
+
+        Returns
+        -------
+        config
+            A model config with a single nameless source and component group.
+        """
         return ModelConfig(
             sources={
                 "": SourceConfig(
@@ -200,14 +280,30 @@ class MultiProFitCoaddFitConfig(
         self.connections.name_table = self.name_model
 
     def use_shapelet_psf(self):
+        """Reconfigure self to use prior shapelet PSF fit parameters."""
         self.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
         self.drop_psf_connection = True
         self.connections.name_table += model_names_default.shapelet_psf
 
 
+class MultiProFitCoaddObjectFitTask(CoaddMultibandFitTask):
+    """MultiProFit coadd object model fitting task."""
+
+    ConfigClass = MultiProFitCoaddObjectFitConfig
+    _DefaultName = "multiProFitCoaddObjectFit"
+
+    def make_kwargs(self, butlerQC, inputRefs, inputs):
+        inputs_init = {name: (config, inputs[name][0]) for name, config in self.config.inputs_init.items()}
+        kwargs = {}
+        if inputs_init:
+            kwargs["inputs_init"] = inputs_init
+
+        return kwargs
+
+
 class MultiProFitCoaddPointFitConfig(
-    MultiProFitCoaddFitConfig,
-    pipelineConnections=CoaddMultibandFitConnections,
+    MultiProFitCoaddObjectFitConfig,
+    pipelineConnections=MultiProFitCoaddObjectFitConnections,
 ):
     """MultiProFit single Sersic model fit task config."""
 
@@ -221,13 +317,17 @@ class MultiProFitCoaddPointFitConfig(
 
     def make_default_model_config(self) -> ModelConfig:
         config_group = ComponentGroupConfig()
+        # This is a bit silly but add_point_source will look for the first
+        # source so it must be added now. Perhaps add_point_source should
+        # add to a config instance or only self by default
+        self.fit_coadd_multiband.config_model = self.make_single_model_config(group=config_group)
         self.add_point_source()
-        return self.make_single_model_config(group=config_group)
+        return self.fit_coadd_multiband.config_model
 
 
 class MultiProFitCoaddSersicFitConfig(
-    MultiProFitCoaddFitConfig,
-    pipelineConnections=CoaddMultibandFitConnections,
+    MultiProFitCoaddObjectFitConfig,
+    pipelineConnections=MultiProFitCoaddObjectFitConnections,
 ):
     """MultiProFit single Sersic model fit task config."""
 
@@ -274,7 +374,11 @@ class MultiProFitCoaddSersicFitConfig(
             comp_sersic.sersic_index.value_initial = index_new
         if fix_index:
             comp_sersic.sersic_index.fixed = True
-        comp_sersic[name_new] = comp_sersic
+        comps_sersic[name_new] = comp_sersic
+
+        if prior_old := self.fit_coadd_multiband.size_priors.get(name_old):
+            self.fit_coadd_multiband.size_priors[name_new] = prior_old
+            del self.fit_coadd_multiband.size_priors[name_old]
 
         self.name_model = name_model
         self.connections.name_table = name_model
@@ -295,8 +399,19 @@ class MultiProFitCoaddSersicFitConfig(
         )
         return self.make_single_model_config(group=config_group)
 
+    def setDefaults(self):
+        super().setDefaults()
+        # This is in pixels and based on DC2. See DM-46498 for details.
+        self.fit_coadd_multiband.size_priors[component_names_default.sersic] = (
+            MagnitudeDependentSizePriorConfig(
+                intercept_mag=22.6,
+                slope_median_per_mag=-0.15,
+                slope_stddev_per_mag=0,
+            )
+        )
 
-class MultiProFitCoaddSersicFitTask(CoaddMultibandFitTask):
+
+class MultiProFitCoaddSersicFitTask(MultiProFitCoaddObjectFitTask):
     """MultiProFit single Sersic model fit task."""
 
     ConfigClass = MultiProFitCoaddSersicFitConfig
@@ -305,7 +420,7 @@ class MultiProFitCoaddSersicFitTask(CoaddMultibandFitTask):
 
 class MultiProFitCoaddGaussFitConfig(
     MultiProFitCoaddSersicFitConfig,
-    pipelineConnections=CoaddMultibandFitConnections,
+    pipelineConnections=MultiProFitCoaddObjectFitConnections,
 ):
     """MultiProFit single Gaussian model fit task config."""
 
@@ -327,7 +442,7 @@ class MultiProFitCoaddGaussFitConfig(
         )
 
 
-class MultiProFitCoaddGaussFitTask(CoaddMultibandFitTask):
+class MultiProFitCoaddGaussFitTask(MultiProFitCoaddObjectFitTask):
     """MultiProFit single Gaussian model fit task."""
 
     ConfigClass = MultiProFitCoaddGaussFitConfig
@@ -336,7 +451,7 @@ class MultiProFitCoaddGaussFitTask(CoaddMultibandFitTask):
 
 class MultiProFitCoaddExpFitConfig(
     MultiProFitCoaddSersicFitConfig,
-    pipelineConnections=CoaddMultibandFitConnections,
+    pipelineConnections=MultiProFitCoaddObjectFitConnections,
 ):
     """MultiProFit single exponential model fit task config."""
 
@@ -356,9 +471,14 @@ class MultiProFitCoaddExpFitConfig(
             index_new=1.0,
             fix_index=True,
         )
+        # These are typical values from DC2 and could/should be switched to a
+        # more data-driven prior (from HSC?)
+        prior_size = self.fit_coadd_multiband.size_priors[component_names_default.exp]
+        prior_size.intercept_mag = 23.4
+        prior_size.slope_median_per_mag = -0.14
 
 
-class MultiProFitCoaddExpFitTask(CoaddMultibandFitTask):
+class MultiProFitCoaddExpFitTask(MultiProFitCoaddObjectFitTask):
     """MultiProFit single exponential model fit task."""
 
     ConfigClass = MultiProFitCoaddExpFitConfig
@@ -367,7 +487,7 @@ class MultiProFitCoaddExpFitTask(CoaddMultibandFitTask):
 
 class MultiProFitCoaddDeVFitConfig(
     MultiProFitCoaddSersicFitConfig,
-    pipelineConnections=CoaddMultibandFitConnections,
+    pipelineConnections=MultiProFitCoaddObjectFitConnections,
 ):
     """MultiProFit single DeVaucouleurs model fit task config."""
 
@@ -387,18 +507,68 @@ class MultiProFitCoaddDeVFitConfig(
             index_new=4.0,
             fix_index=True,
         )
+        # These are typical values from DC2 and could/should be switched to a
+        # more data-driven prior (from HSC?). See DM-46498 for details.
+        prior_size = self.fit_coadd_multiband.size_priors[component_names_default.deV]
+        prior_size.intercept_mag = 21.2
+        prior_size.slope_median_per_mag = -0.14
 
 
-class MultiProFitCoaddDeVFitTask(CoaddMultibandFitTask):
+class MultiProFitCoaddDeVFitTask(MultiProFitCoaddObjectFitTask):
     """MultiProFit single DeVaucouleurs model fit task."""
 
     ConfigClass = MultiProFitCoaddDeVFitConfig
     _DefaultName = "multiProFitCoaddDeVFit"
 
 
+class CachedChainedModelInitializer(CachedBasicModelInitializer):
+    def get_centroid_and_shape(
+        self,
+        source: Mapping[str, Any],
+        catexps: list[CatalogExposureSourcesABC],
+        config_data: CatalogSourceFitterConfigData,
+        values_init: Mapping[g2f.ParameterD, float] | None = None,
+    ) -> tuple[tuple[float, float], tuple[float, float, float]]:
+        row_best = None
+        chisq_red_min = math.inf
+        for name, input_data in self.inputs.items():
+            data = input_data.data
+            index_row = input_data.id_index.get(source["id"])
+            if index_row is not None:
+                row = data[index_row]
+                chisq_red = input_data.get_column("chisq_red", data=row)
+                if chisq_red < chisq_red_min:
+                    row_best = (row, input_data)
+                    chisq_red_min = chisq_red
+        if row_best is None:
+            return super().get_centroid_and_shape(
+                source=source, catexps=catexps, config_data=config_data, values_init=values_init,
+            )
+        row_best, input_data = row_best
+        size_prefix = f"{input_data.name_model}_{input_data.size_column}"
+        cen_x, cen_y, reff_x, reff_y, rho = (
+            input_data.get_column(column, data=row_best)
+            for column in (
+                "cen_x", "cen_y", f"{size_prefix}_x", f"{size_prefix}_y", f"{input_data.name_model}_rho",
+            )
+        )
+        return (cen_x, cen_y), (reff_x, reff_y, rho)
+
+
+class MakeCachedChainedInitializerAction(MakeBasicInitializerAction):
+    def _make_initializer(
+        self,
+        catalog_multi: Sequence,
+        catexps: list[CatalogExposureInputs],
+        config_data: CatalogSourceFitterConfigData,
+    ) -> ModelInitializer:
+        sources, priors = config_data.sources_priors
+        return CachedChainedModelInitializer(priors=priors, sources=sources)
+
+
 class MultiProFitCoaddExpDeVFitConfig(
-    MultiProFitCoaddFitConfig,
-    pipelineConnections=CoaddMultibandFitConnections,
+    MultiProFitCoaddObjectFitConfig,
+    pipelineConnections=MultiProFitCoaddObjectFitConnections,
 ):
     """MultiProFit single Exponential+DeVaucouleurs model fit task config."""
 
@@ -421,12 +591,23 @@ class MultiProFitCoaddExpDeVFitConfig(
 
     def setDefaults(self):
         super().setDefaults()
+        self.fit_coadd_multiband.action_initializer = MakeCachedChainedInitializerAction()
         self.fit_coadd_multiband.config_model = self.make_default_model_config()
         self.name_model = self.get_model_name_default()
         self.connections.name_table = self.name_model
 
+        size_priors = self.fit_coadd_multiband.size_priors
+        size_priors[component_names_default.exp] = MagnitudeDependentSizePriorConfig(
+            intercept_mag=23.3,
+            slope_median_per_mag=-0.14,
+        )
+        size_priors[component_names_default.deV] = MagnitudeDependentSizePriorConfig(
+            intercept_mag=21.2,
+            slope_median_per_mag=-0.14,
+        )
 
-class MultiProFitCoaddExpDeVFitTask(CoaddMultibandFitTask):
+
+class MultiProFitCoaddExpDeVFitTask(MultiProFitCoaddObjectFitTask):
     """MultiProFit single ExpDeV model fit task."""
 
     ConfigClass = MultiProFitCoaddExpDeVFitConfig
