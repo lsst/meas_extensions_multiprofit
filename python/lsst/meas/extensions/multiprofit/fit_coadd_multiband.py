@@ -499,15 +499,30 @@ class BasicModelInitializer(ModelInitializer):
         # Make restrictive centroid limits (intersection, not union)
         x_min, y_min, x_max, y_max = -np.Inf, -np.Inf, np.Inf, np.Inf
 
-        fluxes_init = []
-        fluxes_limits = []
+        fluxes_init = {}
+        fluxes_limits = {}
 
-        n_observations = len(model.data)
+        # This is the maximum number of potential observations
+        # They might not all have made it into the data
+        n_catexps = len(catexps)
         n_components = len(model.sources[0].components)
+
+        # If not true, some bands must have no data to fit
+        if len(catexps) != len(model.data):
+            catexps_obs = []
+            for catexp in catexps:
+                fluxes_init[catexp.channel] = 0
+                fluxes_limits[catexp.channel] = (0, np.Inf)
+                # No associated catalog means we can't fit (and should be
+                # because there's no exposure for this band in this patch)
+                if len(catexp.get_catalog()) > 0:
+                    catexps_obs.append(catexp)
+        else:
+            catexps_obs = catexps
 
         for idx_obs, observation in enumerate(model.data):
             coordsys = observation.image.coordsys
-            catexp = catexps[idx_obs]
+            catexp = catexps_obs[idx_obs]
             band = catexp.band
 
             x_min = max(x_min, coordsys.x_min)
@@ -537,8 +552,8 @@ class BasicModelInitializer(ModelInitializer):
                 flux_min = min(1e-12, flux_max / 1000)
             else:
                 flux_min, flux_max = 0, np.Inf
-            fluxes_init.append(flux_init / n_components)
-            fluxes_limits.append((flux_min, flux_max))
+            fluxes_init[observation.channel] = flux_init / n_components
+            fluxes_limits[observation.channel] = (flux_min, flux_max)
 
         if not np.isfinite(cen_x):
             cen_x = observation.image.n_cols / 2.0
@@ -568,13 +583,15 @@ class BasicModelInitializer(ModelInitializer):
             g2f.SersicMixComponentIndexParameterD: (1.0, None),
         }
 
+        fluxes_init_tuple = tuple(fluxes_init.values())
+        fluxes_limits_tuple = tuple(fluxes_limits.values())
         idx_obs = 0
         for param in self.params_init:
             if param.linear:
-                value_init = fluxes_init[idx_obs]
-                limits_new = fluxes_limits[idx_obs]
+                value_init = fluxes_init_tuple[idx_obs]
+                limits_new = fluxes_limits_tuple[idx_obs]
                 idx_obs += 1
-                if idx_obs == n_observations:
+                if idx_obs == n_catexps:
                     idx_obs = 0
             else:
                 type_param = type(param)
@@ -587,7 +604,7 @@ class BasicModelInitializer(ModelInitializer):
         priors_shape_mag = self.priors_shape_mag
         has_priors_mag = len(priors_shape_mag) > 0
         if has_priors_mag:
-            mag_total = u.nJy.to(u.ABmag, np.nansum(fluxes_init))
+            mag_total = u.nJy.to(u.ABmag, np.nansum(fluxes_init_tuple))
 
         # TODO: Add centroid prior
         priors_gauss, priors_shape = self.get_priors_type(model)
@@ -1191,7 +1208,16 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
             catalog_multi=catalog_multi, catexps=catexps, config_data=config_data,
             **kwargs
         )
-        fitter = MultiProFitSourceFitter(wcs=catexps[0].exposure.wcs, initializer=initializer)
+        # Look for the first WCS - they ought to be identical
+        # If they are not, the patch coadd data model must have changed
+        wcs = None
+        for catexp in catexps:
+            if catexp.exposure is not None:
+                wcs = catexp.exposure.wcs
+                break
+        if wcs is None:
+            raise RuntimeError(f"Could not find valid wcs in any of {catexps=}")
+        fitter = MultiProFitSourceFitter(wcs=wcs, initializer=initializer)
         return fitter
 
     @utilsTimer.timeMethod
