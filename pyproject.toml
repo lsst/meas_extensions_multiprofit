@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lsst-meas-extensions-multiprofit"
-description = "Astronomical image and source model fitting code."
+description = "Pipelines and tasks for coadd PSF and object model fitting with multiprofit"
 license = { file = "LICENSE" }
 readme = "README.rst"
 authors = [
