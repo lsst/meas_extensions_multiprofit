@@ -35,7 +35,6 @@ dependencies = [
     "lsst-multiprofit",
     "lsst-pex-config",
     "lsst-utils",
-    "importlib_resources",
     "matplotlib",
     "numpy",
     "pydantic",
