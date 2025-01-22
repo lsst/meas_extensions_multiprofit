@@ -114,15 +114,19 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
         data = dict()
         bands_sorted = None
 
+        # inputRefs are usually unsorted lists so they need to be sorted first
         for name, inputRef_list in inputRefs:
             inputConfig = self.config.inputs[name]
             bands, patches = set(), dict()
             data_name = defaultdict(dict)
             inputs_name = inputs[name]
+
+            # if it's not a list, then it's a single object
             if not hasattr(inputRef_list, "__len__"):
                 inputRef_list = tuple((inputRef_list,))
                 inputs_name = tuple((inputs_name,))
 
+            # Add every ref by band (if not multiband)
             for dataRef, data_in in zip(inputRef_list, inputs_name):
                 dataId = dataRef.dataId
                 band = dataId.band.name if not inputConfig.is_multiband else band_null
@@ -156,6 +160,7 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                 data_name[patch][band] = data_in
                 bands.add(band)
 
+            # Validate the bands
             if inputConfig.is_multiband:
                 if bands != bands_null:
                     raise RuntimeError(f"multiband {inputConfig=} has non-trivial {bands=}")
@@ -166,6 +171,8 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                 else:
                     if bands != bands_ref:
                         raise RuntimeError(f"{inputConfig=} {bands=} != {bands_ref=}")
+
+            # Check that every dataset has the same set of patches
             if inputConfig.is_multipatch:
                 if patches != patches_null:
                     raise RuntimeError(f"{inputConfig=} {patches=} != {patches_null=}")
