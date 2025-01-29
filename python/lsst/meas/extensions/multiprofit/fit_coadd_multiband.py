@@ -497,7 +497,7 @@ class BasicModelInitializer(ModelInitializer):
             sig_x, sig_y, rho = 2.0, 2.0, 0.0
 
         # Make restrictive centroid limits (intersection, not union)
-        x_min, y_min, x_max, y_max = -np.Inf, -np.Inf, np.Inf, np.Inf
+        x_min, y_min, x_max, y_max = -np.inf, -np.inf, np.inf, np.inf
 
         fluxes_init = {}
         fluxes_limits = {}
@@ -512,7 +512,7 @@ class BasicModelInitializer(ModelInitializer):
             catexps_obs = []
             for catexp in catexps:
                 fluxes_init[catexp.channel] = 0
-                fluxes_limits[catexp.channel] = (0, np.Inf)
+                fluxes_limits[catexp.channel] = (0, np.inf)
                 # No associated catalog means we can't fit (and should be
                 # because there's no exposure for this band in this patch)
                 if len(catexp.get_catalog()) > 0:
@@ -551,7 +551,7 @@ class BasicModelInitializer(ModelInitializer):
                 flux_max = 10 * max((flux_init, flux_total))
                 flux_min = min(1e-12, flux_max / 1000)
             else:
-                flux_min, flux_max = 0, np.Inf
+                flux_min, flux_max = 0, np.inf
             fluxes_init[observation.channel] = flux_init / n_components
             fluxes_limits[observation.channel] = (flux_min, flux_max)
 
