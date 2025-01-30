@@ -114,15 +114,19 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
         data = dict()
         bands_sorted = None
 
+        # inputRefs are usually unsorted lists so they need to be sorted first
         for name, inputRef_list in inputRefs:
             inputConfig = self.config.inputs[name]
             bands, patches = set(), dict()
             data_name = defaultdict(dict)
             inputs_name = inputs[name]
+
+            # if it's not a list, then it's a single object
             if not hasattr(inputRef_list, "__len__"):
                 inputRef_list = tuple((inputRef_list,))
                 inputs_name = tuple((inputs_name,))
 
+            # Add every ref by band (if not multiband)
             for dataRef, data_in in zip(inputRef_list, inputs_name):
                 dataId = dataRef.dataId
                 band = dataId.band.name if not inputConfig.is_multiband else band_null
@@ -156,6 +160,7 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                 data_name[patch][band] = data_in
                 bands.add(band)
 
+            # Validate the bands
             if inputConfig.is_multiband:
                 if bands != bands_null:
                     raise RuntimeError(f"multiband {inputConfig=} has non-trivial {bands=}")
@@ -166,6 +171,8 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                 else:
                     if bands != bands_ref:
                         raise RuntimeError(f"{inputConfig=} {bands=} != {bands_ref=}")
+
+            # Check that every dataset has the same set of patches
             if inputConfig.is_multipatch:
                 if patches != patches_null:
                     raise RuntimeError(f"{inputConfig=} {patches=} != {patches_null=}")
@@ -175,12 +182,19 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                     bands = tuple(bands) if inputConfig.is_multiband else bands_sorted
                     for patch in patches:
                         data_patch = data_name[patch]
-                        tab = data_patch[bands[0]]
-                        tab.add_column(np.full(len(tab), patch), name="patch", index=1)
-                        tab.rename_column(column_id, "objectId")
-                        for band in bands[1:]:
-                            tab = data_patch[band]
-                            del tab[column_id]
+                        # Make sure any one-time operations are done once
+                        # rather than for every band
+                        added = False
+                        for band in bands:
+                            if tab := data_patch.get(band):
+                                if not added:
+                                    # add a patch column to fill in later
+                                    tab.add_column(np.full(len(tab), patch), name="patch", index=1)
+                                    # The id column should be objectId
+                                    tab.rename_column(column_id, "objectId")
+                                    added = True
+                                else:
+                                    del tab[column_id]
                     patches_objid = {objid: patch for patch, objid in patches.items()}
                     patches_ref = {patch: objid for objid, patch in sorted(patches_objid.items())}
                 elif {patch: patches[patch] for patch in patches_ref.keys()} != patches_ref:
@@ -196,18 +210,39 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
 
         tables_read = []
         check_columns = self.config.drop_duplicate_columns or self.config.validate_duplicate_columns
+        n_bands = len(bands_sorted)
 
         for name, data_name in data.items():
             config_input = self.config.inputs[name]
-            tables = [
-                (
-                    apTab.hstack([data_name[patch][band] for band in bands_sorted], join_type="exact")
-                    if not config_input.is_multiband
-                    else data_name[patch][band_null]
-                )
-                for patch in (patches_ref if not config_input.is_multipatch else patches_null)
-            ]
-            table_new = tables[0] if (len(tables) == 1) else apTab.vstack(tables, join_type="exact")
+            tables = []
+            bands_missing = False
+
+            # If this is a multipatch dataset, loop over patches
+            # Otherwise, loop over the single "null" patch
+            for patch in (patches_ref if not config_input.is_multipatch else patches_null):
+                data_name_patch = data_name[patch]
+                # If this is multiband, use the null band, and return an empty
+                # list if there's no corresponding dataset
+                if config_input.is_multiband:
+                    tables_patch = data_name_patch.get(band_null, [])
+                else:
+                    # Get the tables (or None if it's missing) in sorted order
+                    tables_patch = [
+                        _tab for band in bands_sorted if (_tab := data_name_patch.get(band)) is not None
+                    ]
+                    # Check if any bands are missing
+                    if not bands_missing and (len(tables_patch) != n_bands):
+                        bands_missing = True
+                # Join only if there's something to join
+                if tables_patch:
+                    table_patch = apTab.hstack(tables_patch, join_type="exact")
+                    tables.append(table_patch)
+                # If there's nothing to join, presumably the task failed
+                # stacking should handle some tasks failing but not others, but
+                # this shouldn't be relied upon
+
+            table_new = tables[0] if (len(tables) == 1) else apTab.vstack(
+                tables, join_type="outer" if bands_missing else "exact")
 
             if check_columns:
                 columns_new = set(x for x in table_new.colnames if x != config_input.join_column)
