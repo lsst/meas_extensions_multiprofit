@@ -26,6 +26,8 @@ __all__ = (
 
 from collections import defaultdict
 
+import astropy.table
+from lsst.multiprofit.fitting.fit_catalog import CatalogFitterConfig
 import lsst.pex.config as pexConfig
 from lsst.pex.config.configurableActions import ConfigurableAction
 import numpy as np
@@ -57,19 +59,27 @@ class MergeMultibandFluxes(CatalogAction):
 
     name_model = pexConfig.Field[str](doc="The name of the model that fluxes are measured from", default="")
 
-    def __call__(self, data, **kwargs):
+    def __call__(self, data: astropy.table.Table, **kwargs):
         datasetType = kwargs.get("datasetType")
         prefix_model = self.name_model + ("_" if self.name_model else "")
+
+        # Check if the table metadata has relevant config settings
         if (
             self.name_model
             and hasattr(data, "meta")
             and datasetType
             and (config := data.meta.get(datasetType))
         ):
-            prefix = config.get("config", {}).get("prefix_column", "")
+            config_dict = config.get("config", {})
+            prefix = config_dict.get("prefix_column", CatalogFitterConfig.prefix_column.default)
+            suffix_error = config_dict.get("suffix_error", CatalogFitterConfig.suffix_error.default)
+            column_id = config_dict.get("column_id")
         else:
-            prefix = ""
-        columns_rest = []
+            prefix = CatalogFitterConfig.prefix_column.default
+            suffix_error = CatalogFitterConfig.suffix_error.default
+            column_id = "id" if "id" in data.colnames else None
+
+        columns_rest = [] if prefix else ([column_id] if column_id else [])
         columns_flux_band = defaultdict(list)
         for column in data.columns:
             if not prefix or column.startswith(prefix):
@@ -79,22 +89,38 @@ class MergeMultibandFluxes(CatalogAction):
             else:
                 columns_rest.append(column)
 
-        for band, columns_band in columns_flux_band.items():
-            column_flux = f'{columns_band[0].partition("_")[0]}_{band}_flux'
-            flux = np.nansum([data[column] for column in columns_band], axis=0)
-            data[column_flux] = flux
+        columns_exclude_prefix = set(columns_rest) if prefix_model else set()
 
-            columns_band_err = [f"{column}_err" for column in columns_band]
-            errors = [data[column] ** 2 for column in columns_band_err if column in data.columns]
-            if errors:
-                flux_err = np.sqrt(np.nansum(errors, axis=0))
-                flux_err[flux_err == 0] = np.nan
-                column_flux_err = f"{column_flux}_err"
-                data[column_flux_err] = flux_err
+        for band, columns_band in columns_flux_band.items():
+            column_flux = f'{band}_{prefix_model}flux'
+            column_flux_err = f"{column_flux}{suffix_error}"
+            if len(columns_band) > 1:
+                # Sum up component fluxes and make a total flux column
+                flux = np.nansum([data[column] for column in columns_band], axis=0)
+                data[column_flux] = flux
+
+                columns_band_err = [f"{column}{suffix_error}" for column in columns_band]
+                errors = [data[column] ** 2 for column in columns_band_err if column in data.columns]
+                if errors:
+                    flux_err = np.sqrt(np.nansum(errors, axis=0))
+                    flux_err[flux_err == 0] = np.nan
+                    data[column_flux_err] = flux_err
+                    columns_exclude_prefix.add(column_flux_err)
+            else:
+                data.rename_columns(
+                    (columns_band[0], f"{columns_band[0]}{suffix_error}"),
+                    (column_flux, column_flux_err)
+                )
+
+            columns_exclude_prefix.add(column_flux)
+            columns_exclude_prefix.add(f"{column_flux}{suffix_error}")
 
         if prefix_model:
+            # Add prefixes to the column names, if needed
             colnames = [
-                col if (col in columns_rest) else f"{prefix}{prefix_model}{col.split(prefix, 1)[1]}"
+                col if (col in columns_exclude_prefix)
+                else (f"{prefix}{prefix_model if (prefix_model != prefix) else ''}"
+                      f"{col.split(prefix, 1)[1] if prefix else col}")
                 for col in data.columns
             ]
             if hasattr(data, "rename_columns"):
