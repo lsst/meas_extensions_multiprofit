@@ -79,6 +79,7 @@ class MultiProFitPsfConfig(CatalogPsfFitterConfig, fitCP.CoaddPsfFitSubConfig):
             }
         )
         self.flag_errors = {"no_inputs_flag": "InvalidPsfError"}
+        self.prefix_column = "TwoGaussianPsf_"
 
 
 class MultiProFitPsfTask(CatalogPsfFitter, fitCP.CoaddPsfFitSubTask):
