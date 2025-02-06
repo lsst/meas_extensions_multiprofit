@@ -827,6 +827,9 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
             PsfRebuildFitFlagError.column_name(): "PsfRebuildFitFlagError",
         }
         self.centroid_pixel_offset = -0.5
+        self.naming_scheme = "lsst"
+        self.prefix_column = ""
+        self.suffix_error = "Err"
 
 
 @pydantic.dataclasses.dataclass(frozen=True, kw_only=True, config=fitMB.CatalogExposureConfig)
