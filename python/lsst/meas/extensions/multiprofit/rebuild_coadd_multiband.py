@@ -217,7 +217,7 @@ class DataLoader(pydantic.BaseModel):
                 catalog=catalog,
                 band=data_id["band"],
                 imageForRedistribution=exposure,
-                removeScarletData=True,
+                removeScarletData=False,
                 updateFluxColumns=False,
             )
             # The config and table are harmless dummies
