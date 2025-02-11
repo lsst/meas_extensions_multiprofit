@@ -15,13 +15,3 @@ tasks:
           fix_centroid=parameters.fix_centroid,
           use_shapelet_psf=parameters.use_shapelet_psf,
         )
-  mergeMultiprofit: lsst.meas.extensions.multiprofit.pipetasks_merge.MultiProFitConsolidateTablesSersicTask
-  analyzeMultiprofitCore:
-    class: lsst.analysis.tools.tasks.ObjectTableTractAnalysisTask
-    config:
-      connections.data: objectTable_tract_multiprofit
-      connections.outputName: objectTableMultiprofitCore
-      atools.sersicReffVsMag: MultiProFitSersicSizeMagnitudePlot
-
-      python: |
-        from lsst.meas.extensions.multiprofit.analysis_tools import MultiProFitSersicSizeMagnitudePlot
