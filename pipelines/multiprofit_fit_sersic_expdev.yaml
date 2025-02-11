@@ -38,7 +38,7 @@ tasks:
     config:
       python: |
         from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddExpDeVFitConfig
-        
+
         config.add_model(MultiProFitCoaddExpDeVFitConfig.get_model_name_default())
   analyzeMultiprofitCore:
     class: lsst.analysis.tools.tasks.ObjectTableTractAnalysisTask
@@ -55,4 +55,3 @@ tasks:
           MultiProFitExpDevBulgeSizeMagnitudePlot,
           MultiProFitExpDevDiskSizeMagnitudePlot,
         )
-        

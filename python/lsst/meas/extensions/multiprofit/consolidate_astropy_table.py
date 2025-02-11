@@ -81,7 +81,7 @@ class ConsolidateAstropyTableConfig(
 
     drop_duplicate_columns = pexConfig.Field[bool](
         doc="Whether to drop columns from a table if they occur in a previous table."
-            " If False, astropy will rename them with its default scheme.",
+        " If False, astropy will rename them with its default scheme.",
         default=True,
     )
     join_type = pexConfig.ChoiceField[str](
@@ -219,7 +219,7 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
 
             # If this is a multipatch dataset, loop over patches
             # Otherwise, loop over the single "null" patch
-            for patch in (patches_ref if not config_input.is_multipatch else patches_null):
+            for patch in patches_ref if not config_input.is_multipatch else patches_null:
                 data_name_patch = data_name[patch]
                 # If this is multiband, use the null band, and return an empty
                 # list if there's no corresponding dataset
@@ -241,8 +241,11 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                 # stacking should handle some tasks failing but not others, but
                 # this shouldn't be relied upon
 
-            table_new = tables[0] if (len(tables) == 1) else apTab.vstack(
-                tables, join_type="outer" if bands_missing else "exact")
+            table_new = (
+                tables[0]
+                if (len(tables) == 1)
+                else apTab.vstack(tables, join_type="outer" if bands_missing else "exact")
+            )
 
             if check_columns:
                 columns_new = set(x for x in table_new.colnames if x != config_input.join_column)
@@ -254,7 +257,9 @@ class ConsolidateAstropyTableTask(pipeBase.PipelineTask):
                     for column_common in columns_common:
                         if self.config.validate_duplicate_columns:
                             if not np.array_equal(
-                                table_new[column_common], table_old[column_common], equal_nan=True,
+                                table_new[column_common],
+                                table_old[column_common],
+                                equal_nan=True,
                             ):
                                 raise RuntimeError(
                                     f"Joined table column={column_common} differs between {name} and"

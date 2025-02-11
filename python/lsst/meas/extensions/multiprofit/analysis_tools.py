@@ -37,10 +37,10 @@ from .pipetasks_fit import (
     component_names_default,
 )
 
-
 if has_atools:
 
     moments_sersic = MomentsConfig(xx="reff_x", yy="reff_y", xy="rho")
+
     class MultiProFitSizeMagnitudePlot(SizeMagnitudePlot):
         """A size-magnitude plot with default MultiProFit column names."""
 

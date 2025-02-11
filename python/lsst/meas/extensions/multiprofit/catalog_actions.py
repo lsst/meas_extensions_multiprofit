@@ -43,7 +43,7 @@ class CatalogAction(ConfigurableAction):
         ----------
         data
             A dict-like catalog.
-        kwargs
+        **kwargs
             Additional keyword arguments.
 
         Returns
@@ -92,7 +92,7 @@ class MergeMultibandFluxes(CatalogAction):
         columns_exclude_prefix = set(columns_rest) if prefix_model else set()
 
         for band, columns_band in columns_flux_band.items():
-            column_flux = f'{band}_{prefix_model}flux'
+            column_flux = f"{band}_{prefix_model}flux"
             column_flux_err = f"{column_flux}{suffix_error}"
             if len(columns_band) > 1:
                 # Sum up component fluxes and make a total flux column
@@ -108,8 +108,7 @@ class MergeMultibandFluxes(CatalogAction):
                     columns_exclude_prefix.add(column_flux_err)
             else:
                 data.rename_columns(
-                    (columns_band[0], f"{columns_band[0]}{suffix_error}"),
-                    (column_flux, column_flux_err)
+                    (columns_band[0], f"{columns_band[0]}{suffix_error}"), (column_flux, column_flux_err)
                 )
 
             columns_exclude_prefix.add(column_flux)
@@ -118,9 +117,14 @@ class MergeMultibandFluxes(CatalogAction):
         if prefix_model:
             # Add prefixes to the column names, if needed
             colnames = [
-                col if (col in columns_exclude_prefix)
-                else (f"{prefix}{prefix_model if (prefix_model != prefix) else ''}"
-                      f"{col.split(prefix, 1)[1] if prefix else col}")
+                (
+                    col
+                    if (col in columns_exclude_prefix)
+                    else (
+                        f"{prefix}{prefix_model if (prefix_model != prefix) else ''}"
+                        f"{col.split(prefix, 1)[1] if prefix else col}"
+                    )
+                )
                 for col in data.columns
             ]
             if hasattr(data, "rename_columns"):
