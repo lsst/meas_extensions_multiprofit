@@ -785,12 +785,7 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
     columns_copy = pexConfig.DictField[str, str](
         doc="Mapping of input/output column names to copy from the input"
         "multiband catalog to the output fit catalog.",
-        default={
-            "base_ClassificationExtendedness_value": "refExtendedness",
-            "base_ClassificationExtendedness_flag": "refExtendedness_flag",
-            "detect_isPatchInner": "detect_isPatchInner",
-            "detect_isPrimary": "detect_isPrimary",
-        },
+        default={},
         dictCheck=lambda x: len(set(x.values())) == len(x.values()),
     )
     mask_names_zero = pexConfig.ListField[str](
