@@ -38,7 +38,7 @@ __all__ = (
     "MultiProFitSourceTask",
 )
 
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 from functools import cached_property
 import logging
 import math
@@ -239,7 +239,7 @@ class MagnitudeDependentSizePriorConfig(pexConfig.Config):
     )
     slope_stddev_per_mag = pexConfig.Field[float](
         doc="The slope in the standard deviation of the size, in dex per mag",
-        default=0.,
+        default=0.0,
     )
 
 
@@ -285,7 +285,7 @@ class ModelInitializer(ABC, pydantic.BaseModel):
             Fitter configuration and data.
         values_init
             Default initial values for parameters.
-        kwargs
+        **kwargs
             Additional keyword arguments for any purpose.
         """
         raise NotImplementedError(f"{self.__name__} must implement initialize_model")
@@ -299,7 +299,7 @@ class MakeInitializerActionBase(ConfigurableAction):
         catalog_multi: Sequence,
         catexps: list[fitMB.CatalogExposureInputs],
         config_data: CatalogSourceFitterConfigData,
-        **kwargs
+        **kwargs,
     ) -> ModelInitializer:
         """Make a ModelInitializer object that can initialize model
            parameter values for a given object in a catalog.
@@ -312,7 +312,7 @@ class MakeInitializerActionBase(ConfigurableAction):
             Per-band catalog-exposure pairs.
         config_data
             Fitter configuration and data.
-        kwargs
+        **kwargs
             Additional arguments to pass to add to ModelInitializer.inputs.
 
         Returns
@@ -377,7 +377,8 @@ class BasicModelInitializer(ModelInitializer):
         return params_init
 
     def _get_priors_type(
-        self, priors: tuple[g2f.Prior],
+        self,
+        priors: tuple[g2f.Prior],
     ) -> tuple[tuple[g2f.GaussianPrior], tuple[g2f.ShapePrior]]:
         """Return the list of priors of known type, by type.
 
@@ -426,7 +427,7 @@ class BasicModelInitializer(ModelInitializer):
         Returns
         -------
         centroid
-            x- and y-axis centroid values.
+            The x- and y-axis centroid values.
         sig_x, sig_y, rho
             The x- and y-axis Gaussian sigma and rho values defining the
             estimated elliptical shape of the source.
@@ -487,7 +488,10 @@ class BasicModelInitializer(ModelInitializer):
             raise ValueError(f"Unexpected {kwargs=}")
         centroid_pixel_offset = config_data.config.centroid_pixel_offset
         (cen_x, cen_y), (sig_x, sig_y, rho) = self.get_centroid_and_shape(
-            source, catexps, config_data, values_init=values_init,
+            source,
+            catexps,
+            config_data,
+            values_init=values_init,
         )
         # If we couldn't get a shape at all, make it small and roundish
         if not np.isfinite(rho):
@@ -615,17 +619,23 @@ class BasicModelInitializer(ModelInitializer):
                 # the size-apparent mag relation probably flattens
                 # for very bright/faint objects - maybe not so
                 # sharply, but clipping a broad mag range ought to be fine
-                prior.prior_size.mean_parameter.value = prior_size_new.mean_parameter.value * 10**(
-                    mag_dep_prior.slope_median_per_mag*np.clip(
-                        mag_total - mag_dep_prior.intercept_mag, -12.5, 12.5,
+                prior.prior_size.mean_parameter.value = prior_size_new.mean_parameter.value * 10 ** (
+                    mag_dep_prior.slope_median_per_mag
+                    * np.clip(
+                        mag_total - mag_dep_prior.intercept_mag,
+                        -12.5,
+                        12.5,
                     )
                 )
                 # it's uncertain how the intrinsic scatter behaves
                 # educated guess is it doesn't change much, also
                 # one runs out of bright galaxies to measure it anyway
-                prior.prior_size.stddev_parameter.value = prior_size_new.stddev_parameter.value * 10**(
-                    mag_dep_prior.slope_stddev_per_mag*np.clip(
-                        mag_total - mag_dep_prior.intercept_mag, -12.5, 12.5,
+                prior.prior_size.stddev_parameter.value = prior_size_new.stddev_parameter.value * 10 ** (
+                    mag_dep_prior.slope_stddev_per_mag
+                    * np.clip(
+                        mag_total - mag_dep_prior.intercept_mag,
+                        -12.5,
+                        12.5,
                     )
                 )
             else:
@@ -723,10 +733,12 @@ class MakeBasicInitializerAction(MakeInitializerActionBase):
         catalog_multi: Sequence,
         catexps: list[fitMB.CatalogExposureInputs],
         config_data: CatalogSourceFitterConfigData,
-        **kwargs
+        **kwargs,
     ) -> ModelInitializer:
         initializer = self._make_initializer(
-            catalog_multi=catalog_multi, catexps=catexps, config_data=config_data,
+            catalog_multi=catalog_multi,
+            catexps=catexps,
+            config_data=config_data,
         )
         for name, (config_input, data) in kwargs.items():
             if not isinstance(data, Table) and hasattr(data, "meta"):
@@ -739,9 +751,9 @@ class MakeBasicInitializerAction(MakeInitializerActionBase):
             config_source = next(iter(config_data["config_model"]["sources"].values()))
             config_group = next(iter(config_source["component_groups"].values()))
             is_sersic = len(config_group["components_sersic"]) > 0
-            name_model = next(iter(
-                config_group["components_sersic"] if is_sersic else config_group["components_gaussian"]
-            ))
+            name_model = next(
+                iter(config_group["components_sersic"] if is_sersic else config_group["components_gaussian"])
+            )
             initializer.inputs[name] = InitialInputData(
                 column_id=config_data.get("column_id"),
                 config_input=config_input,
@@ -785,12 +797,7 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
     columns_copy = pexConfig.DictField[str, str](
         doc="Mapping of input/output column names to copy from the input"
         "multiband catalog to the output fit catalog.",
-        default={
-            "base_ClassificationExtendedness_value": "refExtendedness",
-            "base_ClassificationExtendedness_flag": "refExtendedness_flag",
-            "detect_isPatchInner": "detect_isPatchInner",
-            "detect_isPrimary": "detect_isPrimary",
-        },
+        default={},
         dictCheck=lambda x: len(set(x.values())) == len(x.values()),
     )
     mask_names_zero = pexConfig.ListField[str](
@@ -805,7 +812,7 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
     prefix_column = pexConfig.Field[str](default="mpf_", doc="Column name prefix")
     size_priors = pexConfig.ConfigDictField[str, MagnitudeDependentSizePriorConfig](
         doc="Per-component magnitude-dependent size prior configurations."
-            " Will be added to component with existing configs.",
+        " Will be added to component with existing configs.",
         default={},
     )
 
@@ -827,6 +834,9 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
             PsfRebuildFitFlagError.column_name(): "PsfRebuildFitFlagError",
         }
         self.centroid_pixel_offset = -0.5
+        self.naming_scheme = "lsst"
+        self.prefix_column = ""
+        self.suffix_error = "Err"
 
 
 @pydantic.dataclasses.dataclass(frozen=True, kw_only=True, config=fitMB.CatalogExposureConfig)
@@ -1072,8 +1082,12 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
         **kwargs,
     ):
         self.initializer.initialize_model(
-            model=model, source=source, catexps=catexps, config_data=config_data, values_init=values_init,
-            **kwargs
+            model=model,
+            source=source,
+            catexps=catexps,
+            config_data=config_data,
+            values_init=values_init,
+            **kwargs,
         )
 
     def make_CatalogExposurePsfs(
@@ -1139,7 +1153,9 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
                     # component.ellipse returns a const ref and must be copied
                     # The ellipse classes might need copy constructors
                     ellipse_copy = type(ellipse)(
-                        size_x=ellipse.size_x, size_y=ellipse.size_y, rho=ellipse.rho,
+                        size_x=ellipse.size_x,
+                        size_y=ellipse.size_y,
+                        rho=ellipse.rho,
                     )
                     prior_shape_new = config_comp.make_shape_prior(ellipse_copy)
                     if prior_shape_new is not None:
@@ -1159,7 +1175,8 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
                             )
                         if (prior_shape_mod := config_data.config.size_priors.get(name_comp)) is not None:
                             self.initializer.priors_shape_mag[prior_shape_old] = (
-                                prior_shape_mod, prior_shape_new,
+                                prior_shape_mod,
+                                prior_shape_new,
                             )
 
         if errors:
@@ -1183,7 +1200,7 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
         catalog_multi: Sequence,
         catexps: list[fitMB.CatalogExposureInputs],
         config_data: CatalogSourceFitterConfigData,
-        **kwargs
+        **kwargs,
     ) -> MultiProFitSourceFitter:
         """Make a default MultiProFitSourceFitter.
 
@@ -1195,7 +1212,7 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
             Catalog-exposure-PSF model tuples to fit source models for.
         config_data
             Configuration and data for the initalizer.
-        kwargs
+        **kwargs
             Additional keyword arguments to pass to
             self.config.action_initializer.
 
@@ -1205,8 +1222,7 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
             A MultiProFitSourceFitter using the first catexp's wcs.
         """
         initializer = self.config.action_initializer(
-            catalog_multi=catalog_multi, catexps=catexps, config_data=config_data,
-            **kwargs
+            catalog_multi=catalog_multi, catexps=catexps, config_data=config_data, **kwargs
         )
         # Look for the first WCS - they ought to be identical
         # If they are not, the patch coadd data model must have changed
@@ -1238,7 +1254,7 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
             Catalog-exposure-PSF model tuples to fit source models for.
         fitter
             The fitter instance to use. Default-initialized if not provided.
-        kwargs
+        **kwargs
             Additional keyword arguments to pass to self.fit.
 
         Returns
@@ -1260,8 +1276,7 @@ class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
             else:
                 inputs_init = {}
             fitter = self.make_default_fitter(
-                catalog_multi=catalog_multi, catexps=catexps, config_data=config_data,
-                **inputs_init
+                catalog_multi=catalog_multi, catexps=catexps, config_data=config_data, **inputs_init
             )
         for idx, catexp in enumerate(catexps):
             if not isinstance(catexp, CatalogExposurePsfs):

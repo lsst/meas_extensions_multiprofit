@@ -50,9 +50,9 @@ from lsst.multiprofit.componentconfig import (
     SersicComponentConfig,
     SersicIndexParameterConfig,
 )
+from lsst.multiprofit.fitting.fit_source import CatalogExposureSourcesABC, CatalogSourceFitterConfigData
 from lsst.multiprofit.modelconfig import ModelConfig
 from lsst.multiprofit.sourceconfig import ComponentGroupConfig, SourceConfig
-from lsst.multiprofit.fitting.fit_source import CatalogExposureSourcesABC, CatalogSourceFitterConfigData
 from lsst.pex.config import ConfigDictField, Field
 from lsst.pipe.tasks.fit_coadd_multiband import (
     CatalogExposureInputs,
@@ -231,7 +231,7 @@ class MultiProFitCoaddObjectFitConfig(
 
         Parameters
         ----------
-        kwargs
+        **kwargs
             Keyword arguments to pass to the SersicIndexParameterConfig.
 
         Returns
@@ -542,14 +542,21 @@ class CachedChainedModelInitializer(CachedBasicModelInitializer):
                     chisq_red_min = chisq_red
         if row_best is None:
             return super().get_centroid_and_shape(
-                source=source, catexps=catexps, config_data=config_data, values_init=values_init,
+                source=source,
+                catexps=catexps,
+                config_data=config_data,
+                values_init=values_init,
             )
         row_best, input_data = row_best
         size_prefix = f"{input_data.name_model}_{input_data.size_column}"
         cen_x, cen_y, reff_x, reff_y, rho = (
             input_data.get_column(column, data=row_best)
             for column in (
-                "cen_x", "cen_y", f"{size_prefix}_x", f"{size_prefix}_y", f"{input_data.name_model}_rho",
+                "cen_x",
+                "cen_y",
+                f"{size_prefix}_x",
+                f"{size_prefix}_y",
+                f"{input_data.name_model}_rho",
             )
         )
         return (cen_x, cen_y), (reff_x, reff_y, rho)

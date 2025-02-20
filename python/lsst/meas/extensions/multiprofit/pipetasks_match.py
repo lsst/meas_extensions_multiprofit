@@ -188,13 +188,15 @@ class MultiProFitDiffMatchedTractCatalogConfig(
         self.coord_format.column_target_coord2 = f"{model_prefixes[0]}_cen_dec"
         self.columns_ref_copy.extend([f"flux_{band}" for band in bands])
         if is_v2:
-            self.columns_ref_copy.extend([
-                'positionAngle',
-                'diskMajorAxisArcsec',
-                'diskAxisRatio',
-                'spheroidMajorAxisArcsec',
-                'spheroidAxisRatio',
-            ])
+            self.columns_ref_copy.extend(
+                [
+                    "positionAngle",
+                    "diskMajorAxisArcsec",
+                    "diskAxisRatio",
+                    "spheroidMajorAxisArcsec",
+                    "spheroidAxisRatio",
+                ]
+            )
             self.columns_ref_copy.extend([f"bulge_to_total_{band}" for band in bands])
         self.columns_target_copy.extend(columns_target_add)
         self.columns_target_copy.extend([f"{col}_err" for col in columns_target_add])
