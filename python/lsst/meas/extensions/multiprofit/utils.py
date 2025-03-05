@@ -127,7 +127,7 @@ def get_spanned_image(
                 variance=variance if get_sig_inv else None,
             )
     if calibrate:
-        maskedIm = exposure.photoCalib.calibrateImage(maskedIm)
+        maskedIm = exposure.photoCalib.calibrateImage(maskedIm, includeScaleUncertainty=False)
         if footprint is None:
             img = maskedIm.image.array
         else:
