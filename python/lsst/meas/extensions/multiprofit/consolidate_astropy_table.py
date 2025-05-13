@@ -63,6 +63,7 @@ class ConsolidateAstropyTableConnections(
     )
 
     def __init__(self, *, config: ConsolidateAstropyTableConfigBase):
+        super().__init__(config=config)
         for name, config_input in config.inputs.items():
             if hasattr(self, name):
                 raise ValueError(
