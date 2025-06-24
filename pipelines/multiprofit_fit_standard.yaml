@@ -3,15 +3,23 @@ description: |
 parameters:
   add_point_source: False
   fix_centroid: False
+  use_cell_coadds: False
   use_shapelet_psf: False
 tasks:
-  fitDeepCoaddPsfGaussians: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddPsfFitTask
+  fitDeepCoaddPsfGaussians:
+    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddPsfFitTask
+    config:
+      use_cell_coadds: parameters.use_cell_coadds
   fitDeblendedObjectsSersic:
     class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddSersicFitTask
     config:
+      use_cell_coadds: parameters.use_cell_coadds
       python: |
         config.finalize(
           add_point_source=parameters.add_point_source,
           fix_centroid=parameters.fix_centroid,
           use_shapelet_psf=parameters.use_shapelet_psf,
         )
+
+contracts:
+  - fitDeepCoaddPsfGaussians.use_cell_coadds == fitDeblendedObjectsSersic.use_cell_coadds
