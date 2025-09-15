@@ -1,57 +1,26 @@
 description: |
-  MultiProFit single Sersic and Exponential + de Vaucouleurs bulge-disk fit
+  Extended MultiProFit pipeline with additional models
+imports:
+  - location: $MEAS_EXTENSIONS_MULTIPROFIT_DIR/pipelines/_ingredients/LSSTCam/DRP.yaml
 parameters:
-  add_point_source: False
-  fix_centroid: False
-  init_expdev_from_sersic: False
-  use_shapelet_psf: False
+  expdev_init_table: deepCoadd_Sersic_multiprofit
 tasks:
-  fitDeepCoaddPsfMultiprofit: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddPsfFitTask
-  fitDeblendedObjectsSersicMultiprofit:
-    class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddSersicFitTask
-    config:
-      python: |
-        config.finalize(
-          add_point_source=parameters.add_point_source,
-          fix_centroid=parameters.fix_centroid,
-          use_shapelet_psf=parameters.use_shapelet_psf,
-        )
-  fitDeblendedObjectsExpDeVMultiprofit:
+  fitDeblendedObjectsExpDeV:
     class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddExpDeVFitTask
     config:
       python: |
-        from lsst.meas.extensions.multiprofit.pipetasks_fit import InputConfig
+        from lsst.meas.extensions.multiprofit.pipetasks_fit import InputConfig, MakeCachedChainedInitializerAction
         config.finalize(
           add_point_source=parameters.add_point_source,
           fix_centroid=parameters.fix_centroid,
           use_shapelet_psf=parameters.use_shapelet_psf,
         )
-        if parameters.init_expdev_from_sersic:
+        if parameters.expdev_init_table:
           config.inputs_init = {
-            "deepCoadd_Sersic_multiprofit": InputConfig(
-              doc="Sersic fit parameters",
+            parameters.expdev_init_table: InputConfig(
+              doc=f"{parameters.expdev_init_table} fit parameters",
               is_multiband=True,
             )
           }
-  mergeMultiprofit:
-    class: lsst.meas.extensions.multiprofit.pipetasks_merge.MultiProFitConsolidateTablesSersicTask
-    config:
-      python: |
-        from lsst.meas.extensions.multiprofit.pipetasks_fit import MultiProFitCoaddExpDeVFitConfig
-
-        config.add_model(MultiProFitCoaddExpDeVFitConfig.get_model_name_default())
-  analyzeMultiprofitCore:
-    class: lsst.analysis.tools.tasks.ObjectTableTractAnalysisTask
-    config:
-      connections.data: objectTable_tract_multiprofit
-      connections.outputName: objectTableMultiprofitCore
-      atools.sersicReffVsMag: MultiProFitSersicSizeMagnitudePlot
-      atools.expDevBulgeReffVsMag: MultiProFitExpDevBulgeSizeMagnitudePlot
-      atools.expDevDiskReffVsMag: MultiProFitExpDevDiskSizeMagnitudePlot
-
-      python: |
-        from lsst.meas.extensions.multiprofit.analysis_tools import (
-          MultiProFitSersicSizeMagnitudePlot,
-          MultiProFitExpDevBulgeSizeMagnitudePlot,
-          MultiProFitExpDevDiskSizeMagnitudePlot,
-        )
+contracts:
+  - fitDeepCoaddPsfGaussians.use_cell_coadds == fitDeblendedObjectsExpDeV.use_cell_coadds
