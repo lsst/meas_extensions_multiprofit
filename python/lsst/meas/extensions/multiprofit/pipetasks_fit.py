@@ -537,7 +537,7 @@ class CachedChainedModelInitializer(CachedBasicModelInitializer):
             index_row = input_data.id_index.get(source["id"])
             if index_row is not None:
                 row = data[index_row]
-                chisq_red = input_data.get_column("chisq_red", data=row)
+                chisq_red = input_data.get_column("chisq_reduced", data=row)
                 if chisq_red < chisq_red_min:
                     row_best = (row, input_data)
                     chisq_red_min = chisq_red
