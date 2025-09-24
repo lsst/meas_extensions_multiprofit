@@ -537,7 +537,7 @@ class CachedChainedModelInitializer(CachedBasicModelInitializer):
             index_row = input_data.id_index.get(source["id"])
             if index_row is not None:
                 row = data[index_row]
-                chisq_red = input_data.get_column("chisq_red", data=row)
+                chisq_red = input_data.get_column("chisq_reduced", data=row)
                 if chisq_red < chisq_red_min:
                     row_best = (row, input_data)
                     chisq_red_min = chisq_red
@@ -549,15 +549,14 @@ class CachedChainedModelInitializer(CachedBasicModelInitializer):
                 values_init=values_init,
             )
         row_best, input_data = row_best
-        size_prefix = f"{input_data.name_model}_{input_data.size_column}"
         cen_x, cen_y, reff_x, reff_y, rho = (
             input_data.get_column(column, data=row_best)
             for column in (
-                "cen_x",
-                "cen_y",
-                f"{size_prefix}_x",
-                f"{size_prefix}_y",
-                f"{input_data.name_model}_rho",
+                input_data.get_column("cen_x").name,
+                input_data.get_column("cen_y").name,
+                input_data.get_column(f"{input_data.size_column}_x").name,
+                input_data.get_column(f"{input_data.size_column}_y").name,
+                input_data.get_column("rho").name,
             )
         )
         return (cen_x, cen_y), (reff_x, reff_y, rho)
