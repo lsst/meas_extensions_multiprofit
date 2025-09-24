@@ -88,7 +88,11 @@ class PsfFitSuccessActionBase(ConfigurableAction):
 
 
 class PsfComponentsActionBase(ConfigurableAction):
-    """Base action to return a list of Gaussians from a source mapping."""
+    """Base action to return a list of Gaussians from a source mapping.
+
+    This base class should be used as a sentinel when using a MultiProFit PSF
+    fit table, and only needs to be specialized for external PSF fitters.
+    """
 
     def get_schema(self) -> list[str]:
         """Return the list of columns required to call this action."""
