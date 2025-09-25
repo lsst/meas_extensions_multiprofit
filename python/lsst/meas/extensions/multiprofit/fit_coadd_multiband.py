@@ -88,7 +88,11 @@ class PsfFitSuccessActionBase(ConfigurableAction):
 
 
 class PsfComponentsActionBase(ConfigurableAction):
-    """Base action to return a list of Gaussians from a source mapping."""
+    """Base action to return a list of Gaussians from a source mapping.
+
+    This base class should be used as a sentinel when using a MultiProFit PSF
+    fit table, and only needs to be specialized for external PSF fitters.
+    """
 
     def get_schema(self) -> list[str]:
         """Return the list of columns required to call this action."""
@@ -483,7 +487,9 @@ class BasicModelInitializer(ModelInitializer):
     ):
         if values_init is None:
             values_init = {}
-        set_flux_limits = kwargs.pop("set_flux_limits") if "set_flux_limits" in kwargs else True
+        set_flux_limits = kwargs.pop("set_flux_limits", True)
+        flux_init_min = kwargs.pop("value_init_min", 1e-10)
+        flux_limit_min = kwargs.pop("flux_limit_min", 1e-12)
         if kwargs:
             raise ValueError(f"Unexpected {kwargs=}")
         centroid_pixel_offset = config_data.config.centroid_pixel_offset
@@ -515,7 +521,7 @@ class BasicModelInitializer(ModelInitializer):
         if len(catexps) != len(model.data):
             catexps_obs = []
             for catexp in catexps:
-                fluxes_init[catexp.channel] = 0
+                fluxes_init[catexp.channel] = flux_init_min
                 fluxes_limits[catexp.channel] = (0, np.inf)
                 # No associated catalog means we can't fit (and should be
                 # because there's no exposure for this band in this patch)
@@ -553,9 +559,12 @@ class BasicModelInitializer(ModelInitializer):
             flux_init = calib.instFluxToNanojansky(flux_init) if (flux_init > 0) else max(flux_total, 1.0)
             if set_flux_limits:
                 flux_max = 10 * max((flux_init, flux_total))
-                flux_min = min(1e-12, flux_max / 1000)
+                flux_min = min(flux_limit_min, flux_max / 1000)
             else:
                 flux_min, flux_max = 0, np.inf
+            if not (flux_init > flux_min):
+                flux_upper = flux_max if (flux_max < np.inf) else 10.*flux_min
+                flux_init = flux_min + 0.01*(flux_upper - flux_min)
             fluxes_init[observation.channel] = flux_init / n_components
             fluxes_limits[observation.channel] = (flux_min, flux_max)
 

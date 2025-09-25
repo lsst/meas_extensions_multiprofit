@@ -68,6 +68,7 @@ from .fit_coadd_multiband import (
     MakeBasicInitializerAction,
     ModelInitializer,
     MultiProFitSourceTask,
+    PsfComponentsActionBase,
     SourceTablePsfComponentsAction,
 )
 from .fit_coadd_psf import MultiProFitPsfTask
@@ -273,7 +274,7 @@ class MultiProFitCoaddObjectFitConfig(
     def setDefaults(self):
         super().setDefaults()
         self.fit_coadd_multiband.retarget(MultiProFitSourceTask)
-        self.fit_coadd_multiband.action_psf = SourceTablePsfComponentsAction()
+        self.fit_coadd_multiband.action_psf = PsfComponentsActionBase()
         self.fit_coadd_multiband.bands_fit = ("u", "g", "r", "i", "z", "y")
 
         self.fit_coadd_multiband.config_model = self.make_default_model_config()
