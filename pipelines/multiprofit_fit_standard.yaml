@@ -13,8 +13,11 @@ tasks:
       use_cell_coadds: parameters.use_cell_coadds
   fitDeblendedObjectsExp:
     class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddExpFitTask
+
     config:
       use_cell_coadds: parameters.use_cell_coadds
+      fit_coadd_multiband.fit_psmodel_final: True
+
       python: |
         config.finalize(
           add_point_source=parameters.add_point_source,
