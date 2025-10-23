@@ -654,7 +654,7 @@ class BasicModelInitializer(ModelInitializer):
 class CachedBasicModelInitializer(BasicModelInitializer):
     """A basic initializer with a cached list of model sources and priors."""
 
-    priors: tuple[g2f.Prior, ...] = pydantic.Field(title="The gauss2d_fit model sources")
+    priors: tuple[g2f.Prior, ...] = pydantic.Field(title="The gauss2d_fit model priors")
     sources: tuple[g2f.Source, ...] = pydantic.Field(title="The gauss2d_fit model sources")
 
     @cached_property
