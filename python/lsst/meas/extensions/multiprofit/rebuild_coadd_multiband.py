@@ -195,6 +195,11 @@ class DataLoader(pydantic.BaseModel):
         )
 
         catexps = {}
+        parentCatalog = butler.get(
+            CoaddMultibandFitInputConnections.objectParents.name.format(name_coadd=name_coadd),
+                **data_id,
+                **kwargs,
+        )
         for band in bands:
             data_id["band"] = band
             catalog = butler.get(
@@ -215,6 +220,7 @@ class DataLoader(pydantic.BaseModel):
             updateCatalogFootprints(
                 modelData=models_scarlet,
                 catalog=catalog,
+                parentCatalog=parentCatalog,
                 band=data_id["band"],
                 imageForRedistribution=exposure,
                 removeScarletData=True,
