@@ -639,7 +639,7 @@ class BasicModelInitializer(ModelInitializer):
             if limits_new:
                 param.limits = g2f.LimitsD(limits_new[0], limits_new[1])
             if value_init is not None:
-                param.value = value_init
+                param.value = np.clip(value_init, param.limits.min, param.limits.max)
 
         priors_shape_mag = self.priors_shape_mag
         has_priors_mag = len(priors_shape_mag) > 0
