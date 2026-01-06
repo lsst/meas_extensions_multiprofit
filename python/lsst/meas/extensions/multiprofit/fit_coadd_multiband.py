@@ -437,10 +437,37 @@ class BasicModelInitializer(ModelInitializer):
             estimated elliptical shape of the source.
         """
         centroid = source["slot_Centroid_x"], source["slot_Centroid_y"]
-        sig_x = math.sqrt(source["slot_Shape_xx"])
-        sig_y = math.sqrt(source["slot_Shape_yy"])
-        # TODO: Verify if there's a sign difference here
-        rho = np.clip(source["slot_Shape_xy"] / (sig_x * sig_y), -0.5, 0.5)
+        # Attempt partial deconvolution of observed moments
+        psf_factor_shrink = 0.9**2
+        psf_factor_minimum = 0.5**2
+        size_minimum = 0.5
+        rho_min, rho_max = -0.8, 0.8
+        psf_xx = source["base_SdssShape_psf_xx"]
+        sig_x = math.sqrt(
+            np.nanmax(
+                (
+                    source["slot_Shape_xx"] - psf_xx * psf_factor_shrink,
+                    psf_xx * psf_factor_minimum,
+                    size_minimum,
+                )
+            )
+        )
+        psf_yy = source["base_SdssShape_psf_yy"]
+        sig_y = math.sqrt(
+            np.nanmax(
+                (
+                    source["slot_Shape_yy"] - psf_yy * psf_factor_shrink,
+                    psf_yy * psf_factor_minimum,
+                    size_minimum,
+                )
+            )
+        )
+        psf_xy = source["base_SdssShape_psf_xy"]
+        sig_xy = sig_x * sig_y
+        if not (sig_xy > 0):
+            rho = 0
+        else:
+            rho = np.clip((source["slot_Shape_xy"] - psf_xy * psf_factor_shrink) / sig_xy, rho_min, rho_max)
         shape = sig_x, sig_y, rho
         return centroid, shape
 
