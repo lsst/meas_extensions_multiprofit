@@ -972,7 +972,7 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
                     param.value = math.sqrt(max(param.value**2 - sigma_subtract_sq, sigma_min_sq))
         return psf_model
 
-    def get_source_observation(self, source, **kwargs) -> g2f.ObservationD:
+    def get_source_observation(self, source, **kwargs) -> g2f.ObservationD | None:
         if not kwargs.get("skip_flags"):
             if (not source["detect_isPrimary"]) or source["merge_peak_sky"]:
                 raise NotPrimaryError(f"source {source[self.config_fit.column_id]} has invalid flags for fit")
@@ -1003,6 +1003,8 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         # ... this rarely ever seems to happen though
         if is_deblended_child:
             coords = np.argwhere(np.isfinite(img) & (sigma_inv > 0) & np.isfinite(sigma_inv))
+            if len(coords) == 0:
+                return None
             x_min, y_min = coords.min(axis=0)
             x_max, y_max = coords.max(axis=0)
             x_max += 1
