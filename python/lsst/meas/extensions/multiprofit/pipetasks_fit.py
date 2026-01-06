@@ -242,7 +242,7 @@ class MultiProFitCoaddObjectFitConfig(
             The default-initialized config.
         """
         return SersicComponentConfig(
-            prior_axrat_stddev=0.8,
+            prior_axrat_stddev=1.0,
             prior_size_stddev=0.2,
             sersic_index=SersicIndexParameterConfig(**kwargs),
         )
