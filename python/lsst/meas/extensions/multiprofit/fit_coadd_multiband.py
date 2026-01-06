@@ -590,8 +590,8 @@ class BasicModelInitializer(ModelInitializer):
             else:
                 flux_min, flux_max = 0, np.inf
             if not (flux_init > flux_min):
-                flux_upper = flux_max if (flux_max < np.inf) else 10.*flux_min
-                flux_init = flux_min + 0.01*(flux_upper - flux_min)
+                flux_upper = flux_max if (flux_max < np.inf) else 10.0 * flux_min
+                flux_init = flux_min + 0.01 * (flux_upper - flux_min)
             fluxes_init[observation.channel] = flux_init / n_components
             fluxes_limits[observation.channel] = (flux_min, flux_max)
 
