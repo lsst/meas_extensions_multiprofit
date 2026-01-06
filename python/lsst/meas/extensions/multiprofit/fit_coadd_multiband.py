@@ -962,12 +962,14 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         sigma_subtract = self.config_fit.psf_sigma_subtract
         if sigma_subtract > 0:
             sigma_subtract_sq = sigma_subtract * sigma_subtract
+            # 1/10 of PSF sigma should suffice as a minimum size
+            sigma_min_sq = sigma_subtract_sq / 100.0
             for param in self.psf_model_data.parameters.values():
                 if isinstance(
                     param,
                     g2f.SigmaXParameterD | g2f.SigmaYParameterD | g2f.ReffXParameterD | g2f.ReffYParameterD,
                 ):
-                    param.value = math.sqrt(param.value**2 - sigma_subtract_sq)
+                    param.value = math.sqrt(max(param.value**2 - sigma_subtract_sq, sigma_min_sq))
         return psf_model
 
     def get_source_observation(self, source, **kwargs) -> g2f.ObservationD:
