@@ -1191,9 +1191,12 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
                     # component.ellipse returns a const ref and must be copied
                     # The ellipse classes might need copy constructors
                     ellipse_copy = type(ellipse)(
-                        size_x=ellipse.size_x,
-                        size_y=ellipse.size_y,
-                        rho=ellipse.rho,
+                        # No kwargs here, since they are unfortunately not
+                        # standardized (e.g. Gaussian is sigma_x not size_x)
+                        # but the arg order is
+                        ellipse.size_x,
+                        ellipse.size_y,
+                        ellipse.rho,
                     )
                     prior_shape_new = config_comp.make_shape_prior(ellipse_copy)
                     if prior_shape_new is not None:
