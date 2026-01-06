@@ -39,6 +39,7 @@ __all__ = (
 )
 
 from abc import abstractmethod
+import itertools
 import math
 from types import SimpleNamespace
 from typing import Any, Mapping, Sequence
@@ -175,6 +176,7 @@ class MultiProFitCoaddObjectFitConfig(
         add_point_source: bool = False,
         fix_centroid: bool = False,
         use_shapelet_psf: bool = False,
+        prior_axrat_stddev: float | str | None = None,
     ):
         """Apply runtime configuration changes to this config.
 
@@ -186,6 +188,9 @@ class MultiProFitCoaddObjectFitConfig(
             Whether to fix the centroid.
         use_shapelet_psf
             Whether to initialize PSF parameters from prior shapelet fits.
+        prior_axrat_stddev
+            The standard deviation for the axis ratio prior. Ignored if None,
+            otherwise it must be convertible to a float.
         """
         if add_point_source:
             self.add_point_source()
@@ -193,6 +198,8 @@ class MultiProFitCoaddObjectFitConfig(
             self.fix_centroid()
         if use_shapelet_psf:
             self.use_shapelet_psf()
+        if prior_axrat_stddev is not None:
+            self.set_prior_axrat_stddev(float(prior_axrat_stddev))
 
     def fix_centroid(self):
         """Fix (freeze) the source centroid parameters."""
@@ -270,6 +277,28 @@ class MultiProFitCoaddObjectFitConfig(
                 )
             }
         )
+
+    def set_prior_axrat_stddev(self, stddev: float) -> None:
+        """Set the standard deviation for all axis ratio priors.
+
+        Parameters
+        ----------
+        stddev
+            The standard deviation.
+        """
+        for source in self.fit_coadd_multiband.config_model.sources.values():
+            for group in source.component_groups.values():
+                for comp in itertools.chain(
+                    group.components_gauss.values(),
+                    group.components_sersic.values(),
+                ):
+                    comp.prior_axrat_stddev = stddev
+
+        group = self._get_component_group()
+        centroids = group.centroids["default"]
+        centroids.x.fixed = True
+        centroids.y.fixed = True
+        self.connections.name_table += model_names_default.fixed_cen
 
     def setDefaults(self):
         super().setDefaults()
