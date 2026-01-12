@@ -600,7 +600,7 @@ class MakeCachedChainedInitializerAction(MakeBasicInitializerAction):
         config_data: CatalogSourceFitterConfigData,
     ) -> ModelInitializer:
         sources, priors = config_data.sources_priors
-        return CachedChainedModelInitializer(priors=priors, sources=sources)
+        return CachedChainedModelInitializer(config=self.config, priors=priors, sources=sources)
 
 
 class MultiProFitCoaddExpDeVFitConfig(

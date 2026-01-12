@@ -327,10 +327,37 @@ class MakeInitializerActionBase(ConfigurableAction):
         raise NotImplementedError(f"{self.__name__} must implement __call__")
 
 
+class BasicModelInitializerConfig(pexConfig.Config):
+    """Configuration for a BasicModelInitializer."""
+
+    psf_factor_shrink = pexConfig.Field[float](
+        doc="Multiplicative factor to shrink PSF sizes by for deconvolution",
+        default=0.9,
+        check=lambda x: 0.0 <= x < 1.0,
+    )
+    psf_factor_minimum = pexConfig.Field[float](
+        doc="Factor to multiply the PSF size by for a minimum initialize size",
+        default=0.5,
+        check=lambda x: x >= 0,
+    )
+    size_minimum = pexConfig.Field[float](
+        doc="Absolute minimum initial size in pixels",
+        default=0.5,
+        check=lambda x: x >= 0,
+    )
+    rho_abs_max = pexConfig.Field[float](
+        doc="Maximum absolute initial value of rho",
+        default=0.8,
+        check=lambda x: x >= 0,
+    )
+
+
 class BasicModelInitializer(ModelInitializer):
     """A generic model initializer that should work on most kinds of models
     with a single source.
     """
+
+    config: BasicModelInitializerConfig = pydantic.Field(title="A BasicModelInitializerConfig to be frozen")
 
     def _get_params_init(self, model_sources: tuple[g2f.Source]) -> tuple[g2f.ParameterD]:
         """Return an ordered set of free parameters from a model's sources.
@@ -438,29 +465,22 @@ class BasicModelInitializer(ModelInitializer):
         """
         centroid = source["slot_Centroid_x"], source["slot_Centroid_y"]
         # Attempt partial deconvolution of observed moments
-        psf_factor_shrink = 0.9**2
-        psf_factor_minimum = 0.5**2
-        size_minimum = 0.5
-        rho_min, rho_max = -0.8, 0.8
+        psf_factor_shrink = self.config.psf_factor_shrink**2
+        psf_factor_minimum = self.config.psf_factor_minimum**2
+        rho_min, rho_max = -self.config.rho_abs_max, self.config.rho_abs_max
         psf_xx = source["base_SdssShape_psf_xx"]
-        sig_x = math.sqrt(
-            np.nanmax(
-                (
-                    source["slot_Shape_xx"] - psf_xx * psf_factor_shrink,
-                    psf_xx * psf_factor_minimum,
-                    size_minimum,
-                )
-            )
-        )
         psf_yy = source["base_SdssShape_psf_yy"]
-        sig_y = math.sqrt(
-            np.nanmax(
-                (
-                    source["slot_Shape_yy"] - psf_yy * psf_factor_shrink,
-                    psf_yy * psf_factor_minimum,
-                    size_minimum,
+        sig_x, sig_y = (
+            math.sqrt(
+                np.nanmax(
+                    (
+                        source[f"slot_Shape_{suffix}"] - moment_sq * psf_factor_shrink,
+                        moment_sq * psf_factor_minimum,
+                        self.config.size_minimum,
+                    )
                 )
             )
+            for suffix, moment_sq in (("xx", psf_xx), ("yy", psf_yy))
         )
         psf_xy = source["base_SdssShape_psf_xy"]
         sig_xy = sig_x * sig_y
@@ -756,13 +776,17 @@ class MakeBasicInitializerAction(MakeInitializerActionBase):
     single-source model.
     """
 
+    config = pexConfig.ConfigField[BasicModelInitializerConfig](
+        doc="Configuration for the initializer to be constructed",
+    )
+
     def _make_initializer(
         self,
         catalog_multi: Sequence,
         catexps: list[fitMB.CatalogExposureInputs],
         config_data: CatalogSourceFitterConfigData,
     ) -> ModelInitializer:
-        return BasicModelInitializer()
+        return BasicModelInitializer(config=self.config)
 
     def __call__(
         self,
@@ -816,7 +840,7 @@ class MakeCachedBasicInitializerAction(MakeBasicInitializerAction):
         config_data: CatalogSourceFitterConfigData,
     ) -> ModelInitializer:
         sources, priors = config_data.sources_priors
-        return CachedBasicModelInitializer(priors=priors, sources=sources)
+        return CachedBasicModelInitializer(config=self.config, priors=priors, sources=sources)
 
 
 class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFitSubConfig):
