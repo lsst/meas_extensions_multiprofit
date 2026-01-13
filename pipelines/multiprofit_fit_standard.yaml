@@ -3,6 +3,7 @@ description: |
 parameters:
   add_point_source: False
   fix_centroid: False
+  prior_axrat_stddev: null
   sersic_init_table: deepCoadd_Exp_multiprofit
   use_cell_coadds: False
   use_shapelet_psf: False
@@ -23,6 +24,7 @@ tasks:
           add_point_source=parameters.add_point_source,
           fix_centroid=parameters.fix_centroid,
           use_shapelet_psf=parameters.use_shapelet_psf,
+          prior_axrat_stddev=parameters.prior_axrat_stddev,
         )
   fitDeblendedObjectsSersic:
     class: lsst.meas.extensions.multiprofit.pipetasks_fit.MultiProFitCoaddSersicFitTask
@@ -34,6 +36,7 @@ tasks:
           add_point_source=parameters.add_point_source,
           fix_centroid=parameters.fix_centroid,
           use_shapelet_psf=parameters.use_shapelet_psf,
+          prior_axrat_stddev=parameters.prior_axrat_stddev,
         )
         if parameters.sersic_init_table:
           config.inputs_init = {
