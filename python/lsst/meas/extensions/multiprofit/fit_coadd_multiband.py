@@ -981,7 +981,10 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
                 self.table_psf_fits[self.psf_model_data.config.column_id] == source[self.config_fit.column_id]
             )[0][0]
             psf_model = self.psf_model_data.psf_model
-            self.psf_model_data.init_psf_model(self.table_psf_fits[match])
+            try:
+                self.psf_model_data.init_psf_model(self.table_psf_fits[match])
+            except PsfRebuildFitFlagError:
+                return None
 
         sigma_subtract = self.config_fit.psf_sigma_subtract
         if sigma_subtract > 0:
