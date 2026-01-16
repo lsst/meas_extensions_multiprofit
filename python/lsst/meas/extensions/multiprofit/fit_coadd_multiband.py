@@ -943,13 +943,13 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
 
         return params_flux, is_frac_any
 
-    def get_psf_model(self, source):
+    def get_psf_model(self, params: Mapping[str, Any]) -> g2f.PsfModel | None:
         psf_model = self.psf_model_data.psf_model
         # PsfComponentsActionBase is an abstract class, so check if the action
         # is a subclass that needs to be called
         if not self.config_fit.requires_psf():
             try:
-                gaussians = self.config_fit.action_psf(source)
+                gaussians = self.config_fit.action_psf(params)
             except PsfRebuildFitFlagError:
                 return None
             n_comps = len(psf_model.components)
@@ -978,7 +978,7 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         else:
             # TODO: this should probably use .index or something
             match = np.argwhere(
-                self.table_psf_fits[self.psf_model_data.config.column_id] == source[self.config_fit.column_id]
+                self.table_psf_fits[self.psf_model_data.config.column_id] == params[self.config_fit.column_id]
             )[0][0]
             psf_model = self.psf_model_data.psf_model
             try:
