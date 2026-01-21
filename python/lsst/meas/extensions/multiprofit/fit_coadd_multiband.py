@@ -327,10 +327,37 @@ class MakeInitializerActionBase(ConfigurableAction):
         raise NotImplementedError(f"{self.__name__} must implement __call__")
 
 
+class BasicModelInitializerConfig(pexConfig.Config):
+    """Configuration for a BasicModelInitializer."""
+
+    psf_factor_shrink = pexConfig.Field[float](
+        doc="Multiplicative factor to shrink PSF sizes by for deconvolution",
+        default=0.9,
+        check=lambda x: 0.0 <= x < 1.0,
+    )
+    psf_factor_minimum = pexConfig.Field[float](
+        doc="Factor to multiply the PSF size by for a minimum initialize size",
+        default=0.5,
+        check=lambda x: x >= 0,
+    )
+    size_minimum = pexConfig.Field[float](
+        doc="Absolute minimum initial size in pixels",
+        default=0.5,
+        check=lambda x: x >= 0,
+    )
+    rho_abs_max = pexConfig.Field[float](
+        doc="Maximum absolute initial value of rho",
+        default=0.8,
+        check=lambda x: x >= 0,
+    )
+
+
 class BasicModelInitializer(ModelInitializer):
     """A generic model initializer that should work on most kinds of models
     with a single source.
     """
+
+    config: BasicModelInitializerConfig = pydantic.Field(title="A BasicModelInitializerConfig to be frozen")
 
     def _get_params_init(self, model_sources: tuple[g2f.Source]) -> tuple[g2f.ParameterD]:
         """Return an ordered set of free parameters from a model's sources.
@@ -437,10 +464,30 @@ class BasicModelInitializer(ModelInitializer):
             estimated elliptical shape of the source.
         """
         centroid = source["slot_Centroid_x"], source["slot_Centroid_y"]
-        sig_x = math.sqrt(source["slot_Shape_xx"])
-        sig_y = math.sqrt(source["slot_Shape_yy"])
-        # TODO: Verify if there's a sign difference here
-        rho = np.clip(source["slot_Shape_xy"] / (sig_x * sig_y), -0.5, 0.5)
+        # Attempt partial deconvolution of observed moments
+        psf_factor_shrink = self.config.psf_factor_shrink**2
+        psf_factor_minimum = self.config.psf_factor_minimum**2
+        rho_min, rho_max = -self.config.rho_abs_max, self.config.rho_abs_max
+        psf_xx = source["base_SdssShape_psf_xx"]
+        psf_yy = source["base_SdssShape_psf_yy"]
+        sig_x, sig_y = (
+            math.sqrt(
+                np.nanmax(
+                    (
+                        source[f"slot_Shape_{suffix}"] - moment_sq * psf_factor_shrink,
+                        moment_sq * psf_factor_minimum,
+                        self.config.size_minimum,
+                    )
+                )
+            )
+            for suffix, moment_sq in (("xx", psf_xx), ("yy", psf_yy))
+        )
+        psf_xy = source["base_SdssShape_psf_xy"]
+        sig_xy = sig_x * sig_y
+        if not (sig_xy > 0):
+            rho = 0
+        else:
+            rho = np.clip((source["slot_Shape_xy"] - psf_xy * psf_factor_shrink) / sig_xy, rho_min, rho_max)
         shape = sig_x, sig_y, rho
         return centroid, shape
 
@@ -563,8 +610,8 @@ class BasicModelInitializer(ModelInitializer):
             else:
                 flux_min, flux_max = 0, np.inf
             if not (flux_init > flux_min):
-                flux_upper = flux_max if (flux_max < np.inf) else 10.*flux_min
-                flux_init = flux_min + 0.01*(flux_upper - flux_min)
+                flux_upper = flux_max if (flux_max < np.inf) else 10.0 * flux_min
+                flux_init = flux_min + 0.01 * (flux_upper - flux_min)
             fluxes_init[observation.channel] = flux_init / n_components
             fluxes_limits[observation.channel] = (flux_min, flux_max)
 
@@ -612,7 +659,7 @@ class BasicModelInitializer(ModelInitializer):
             if limits_new:
                 param.limits = g2f.LimitsD(limits_new[0], limits_new[1])
             if value_init is not None:
-                param.value = value_init
+                param.value = np.clip(value_init, param.limits.min, param.limits.max)
 
         priors_shape_mag = self.priors_shape_mag
         has_priors_mag = len(priors_shape_mag) > 0
@@ -729,13 +776,17 @@ class MakeBasicInitializerAction(MakeInitializerActionBase):
     single-source model.
     """
 
+    config = pexConfig.ConfigField[BasicModelInitializerConfig](
+        doc="Configuration for the initializer to be constructed",
+    )
+
     def _make_initializer(
         self,
         catalog_multi: Sequence,
         catexps: list[fitMB.CatalogExposureInputs],
         config_data: CatalogSourceFitterConfigData,
     ) -> ModelInitializer:
-        return BasicModelInitializer()
+        return BasicModelInitializer(config=self.config)
 
     def __call__(
         self,
@@ -789,7 +840,7 @@ class MakeCachedBasicInitializerAction(MakeBasicInitializerAction):
         config_data: CatalogSourceFitterConfigData,
     ) -> ModelInitializer:
         sources, priors = config_data.sources_priors
-        return CachedBasicModelInitializer(priors=priors, sources=sources)
+        return CachedBasicModelInitializer(config=self.config, priors=priors, sources=sources)
 
 
 class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFitSubConfig):
@@ -935,15 +986,17 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         sigma_subtract = self.config_fit.psf_sigma_subtract
         if sigma_subtract > 0:
             sigma_subtract_sq = sigma_subtract * sigma_subtract
+            # 1/10 of PSF sigma should suffice as a minimum size
+            sigma_min_sq = sigma_subtract_sq / 100.0
             for param in self.psf_model_data.parameters.values():
                 if isinstance(
                     param,
                     g2f.SigmaXParameterD | g2f.SigmaYParameterD | g2f.ReffXParameterD | g2f.ReffYParameterD,
                 ):
-                    param.value = math.sqrt(param.value**2 - sigma_subtract_sq)
+                    param.value = math.sqrt(max(param.value**2 - sigma_subtract_sq, sigma_min_sq))
         return psf_model
 
-    def get_source_observation(self, source, **kwargs) -> g2f.ObservationD:
+    def get_source_observation(self, source, **kwargs) -> g2f.ObservationD | None:
         if not kwargs.get("skip_flags"):
             if (not source["detect_isPrimary"]) or source["merge_peak_sky"]:
                 raise NotPrimaryError(f"source {source[self.config_fit.column_id]} has invalid flags for fit")
@@ -974,6 +1027,8 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         # ... this rarely ever seems to happen though
         if is_deblended_child:
             coords = np.argwhere(np.isfinite(img) & (sigma_inv > 0) & np.isfinite(sigma_inv))
+            if len(coords) == 0:
+                return None
             x_min, y_min = coords.min(axis=0)
             x_max, y_max = coords.max(axis=0)
             x_max += 1
@@ -1162,9 +1217,12 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
                     # component.ellipse returns a const ref and must be copied
                     # The ellipse classes might need copy constructors
                     ellipse_copy = type(ellipse)(
-                        size_x=ellipse.size_x,
-                        size_y=ellipse.size_y,
-                        rho=ellipse.rho,
+                        # No kwargs here, since they are unfortunately not
+                        # standardized (e.g. Gaussian is sigma_x not size_x)
+                        # but the arg order is
+                        ellipse.size_x,
+                        ellipse.size_y,
+                        ellipse.rho,
                     )
                     prior_shape_new = config_comp.make_shape_prior(ellipse_copy)
                     if prior_shape_new is not None:
