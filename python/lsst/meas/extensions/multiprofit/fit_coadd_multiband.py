@@ -47,6 +47,7 @@ from typing import Any, ClassVar, Iterable, Mapping, Sequence
 from astropy.table import Table
 import astropy.units as u
 import lsst.afw.geom
+import lsst.afw.table as afwTable
 from lsst.daf.butler.formatters.parquet import astropy_to_arrow
 import lsst.gauss2d as g2
 import lsst.gauss2d.fit as g2f
@@ -887,6 +888,8 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
 
     def setDefaults(self):
         super().setDefaults()
+        self.defer_radec_conversion = True
+        self.compute_radec_covariance = True
         self.flag_errors = {
             IsParentError.column_name(): "IsParentError",
             NoDataError.column_name(): "NoDataError",
@@ -1132,6 +1135,50 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
             results[column] = catalog_multi["slot_Centroid_xErr"]
         for column in columns_ceny_err_copy:
             results[column] = catalog_multi["slot_Centroid_yErr"]
+
+    def compute_model_radec_err(
+        self,
+        source_multi: Mapping[str, Any],
+        results,
+        columns_params_radec_err,
+        idx: int,
+        set_radec: bool = False,
+    ) -> None:
+        for (
+            key_ra_err,
+            key_dec_err,
+            key_cen_x,
+            key_cen_y,
+            key_cen_x_err,
+            key_cen_y_err,
+            key_cen_ra_dec_cov,
+            key_ra,
+            key_dec,
+        ) in columns_params_radec_err:
+            (ra, dec), (ra_err, dec_err, ra_dec_cov) = afwTable.convertCentroid(
+                self.wcs,
+                results[key_cen_x][idx],
+                results[key_cen_y][idx],
+                results[key_cen_x_err][idx],
+                results[key_cen_y_err][idx],
+                0.0,
+            )
+            if set_radec:
+                results[key_ra][idx], results[key_dec][idx] = ra, dec
+            else:
+                ra_in, dec_in = results[key_ra][idx], results[key_dec][idx]
+                if not np.isclose((ra, dec), (ra_in, dec_in), rtol=1e-7, atol=1e-8):
+                    self._get_logger().warning(
+                        "idx=%i ra, dec = %f,%f differ significantly from convertCentroid ra, dec = %f, %f",
+                        idx,
+                        ra_in,
+                        dec_in,
+                        ra,
+                        dec,
+                    )
+            results[key_ra_err][idx], results[key_dec_err][idx] = ra_err, dec_err
+            if key_cen_ra_dec_cov is not None:
+                results[key_cen_ra_dec_cov][idx] = ra_dec_cov
 
     def get_model_radec(self, source: Mapping[str, Any], cen_x: float, cen_y: float):
         # no extra conversions are needed here - cen_x, cen_y are in catalog
