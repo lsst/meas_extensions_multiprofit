@@ -957,7 +957,7 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
     )
     psf_sigma_subtract = pexConfig.Field[float](
         doc="PSF x/y sigma value to subtract in quadrature from best-fit values",
-        default=0.1,
+        default=0.0,
         check=lambda x: np.isfinite(x) and (x >= 0),
     )
     prefix_column = pexConfig.Field[str](default="mpf_", doc="Column name prefix")
