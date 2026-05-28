@@ -1003,9 +1003,6 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         return psf_model
 
     def get_source_observation(self, source, **kwargs) -> g2f.ObservationD | None:
-        if not kwargs.get("skip_flags"):
-            if (not source["detect_isPrimary"]) or source["merge_peak_sky"]:
-                raise NotPrimaryError(f"source {source[self.config_fit.column_id]} has invalid flags for fit")
         footprint = source.getFootprint()
         bbox = footprint.getBBox()
         if not (bbox.getArea() > 0):
@@ -1298,6 +1295,15 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
 
         if errors:
             raise RuntimeError("\n".join(errors))
+
+    def validate_source(
+        self,
+        idx_row: int,
+        catalog_multi: Sequence,
+    ) -> None:
+        source = catalog_multi[idx_row]
+        if (not source["detect_isPrimary"]) or source["merge_peak_sky"]:
+            raise NotPrimaryError(f"source {source['id']} has invalid flags for fit")
 
 
 class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
