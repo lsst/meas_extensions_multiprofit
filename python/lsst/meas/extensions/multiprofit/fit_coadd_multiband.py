@@ -1052,6 +1052,7 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
                 sigma_inv = sigma_inv[x_min:x_max, y_min:y_max]
                 mask = mask[x_min:x_max, y_min:y_max]
 
+        mask[~np.isfinite(img) | ~np.isfinite(sigma_inv)] = False
         sigma_inv[~mask] = 0
 
         coordsys = g2.CoordinateSystem(1.0, 1.0, x_min_bbox, y_min_bbox)
