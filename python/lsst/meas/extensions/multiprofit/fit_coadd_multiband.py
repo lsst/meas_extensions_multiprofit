@@ -867,7 +867,7 @@ class MultiProFitSourceConfig(CatalogSourceFitterConfig, fitMB.CoaddMultibandFit
     )
     psf_sigma_subtract = pexConfig.Field[float](
         doc="PSF x/y sigma value to subtract in quadrature from best-fit values",
-        default=0.1,
+        default=0.0,
         check=lambda x: np.isfinite(x) and (x >= 0),
     )
     prefix_column = pexConfig.Field[str](default="mpf_", doc="Column name prefix")
@@ -1003,9 +1003,6 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
         return psf_model
 
     def get_source_observation(self, source, **kwargs) -> g2f.ObservationD | None:
-        if not kwargs.get("skip_flags"):
-            if (not source["detect_isPrimary"]) or source["merge_peak_sky"]:
-                raise NotPrimaryError(f"source {source[self.config_fit.column_id]} has invalid flags for fit")
         footprint = source.getFootprint()
         bbox = footprint.getBBox()
         if not (bbox.getArea() > 0):
@@ -1055,6 +1052,7 @@ class CatalogExposurePsfs(fitMB.CatalogExposureInputs, CatalogExposureSourcesABC
                 sigma_inv = sigma_inv[x_min:x_max, y_min:y_max]
                 mask = mask[x_min:x_max, y_min:y_max]
 
+        mask[~np.isfinite(img) | ~np.isfinite(sigma_inv)] = False
         sigma_inv[~mask] = 0
 
         coordsys = g2.CoordinateSystem(1.0, 1.0, x_min_bbox, y_min_bbox)
@@ -1298,6 +1296,15 @@ class MultiProFitSourceFitter(CatalogSourceFitterABC):
 
         if errors:
             raise RuntimeError("\n".join(errors))
+
+    def validate_source(
+        self,
+        idx_row: int,
+        catalog_multi: Sequence,
+    ) -> None:
+        source = catalog_multi[idx_row]
+        if (not source["detect_isPrimary"]) or source["merge_peak_sky"]:
+            raise NotPrimaryError(f"source {source['id']} has invalid flags for fit")
 
 
 class MultiProFitSourceTask(fitMB.CoaddMultibandFitSubTask):
