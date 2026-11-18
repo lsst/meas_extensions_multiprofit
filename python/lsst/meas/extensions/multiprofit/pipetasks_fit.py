@@ -514,6 +514,8 @@ class MultiProFitCoaddExpFitConfig(
             index_new=1.0,
             fix_index=True,
         )
+        # For an exponential, there's not much benefit to a higher order
+        self._get_component_group().components_sersic[component_names_default.exp].order = 4
         # These are typical values from DC2 and could/should be switched to a
         # more data-driven prior (from HSC?)
         prior_size = self.fit_coadd_multiband.size_priors[component_names_default.exp]
@@ -644,6 +646,9 @@ class MultiProFitCoaddExpDeVFitConfig(
         self.fit_coadd_multiband.config_model = self.make_default_model_config()
         self.name_model = self.get_model_name_default()
         self.connections.name_table = self.name_model
+        # For an exponential, there's not much benefit to a higher order
+        self._get_component_group().components_sersic[component_names_default.exp].order = 4
+        # ... but dev should use order 8, so it stays at the default
 
         size_priors = self.fit_coadd_multiband.size_priors
         size_priors[component_names_default.exp] = MagnitudeDependentSizePriorConfig(
