@@ -810,7 +810,7 @@ class MakeBasicInitializerAction(MakeInitializerActionBase):
             config_group = next(iter(config_source["component_groups"].values()))
             is_sersic = len(config_group["components_sersic"]) > 0
             name_model = next(
-                iter(config_group["components_sersic"] if is_sersic else config_group["components_gaussian"])
+                iter(config_group["components_sersic"] if is_sersic else config_group["components_gauss"])
             )
             initializer.inputs[name] = InitialInputData(
                 column_id=config_data.get("column_id"),
@@ -818,7 +818,7 @@ class MakeBasicInitializerAction(MakeInitializerActionBase):
                 data=data,
                 name_model=name_model,
                 prefix_column=prefix_column,
-                size_column="reff" if is_sersic else "sig",
+                size_column="reff" if is_sersic else "sigma",
             )
         return initializer
 
